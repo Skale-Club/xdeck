@@ -1,9 +1,13 @@
 // Xdeck UI. The native host (Xdeck.exe) sends:
 //   {type:"state", accent, outs:[{id,name,kind}], mics:[...], defOut, defMic, pads:[{key,kind,name,index,battery,charging,conn}]}
 //   {type:"levels", levels:{endpointId: 0..1}}
-//   {type:"show"}                               the window was just opened
+//   {type:"show", pad, combo}                   the window was just opened (pad: from the controller shortcut;
+//                                               combo: that shortcut as written in shortcuts.ini, "" if off)
+//   {type:"shortcuts", combo}                   shortcuts.ini was saved
+//   {type:"pad", btn}                           controller navigation: up down left right a b x start bhold
 // and receives:
-//   {type:"size", w, h}  {type:"close"}  {type:"select", id}
+//   {type:"size", w, h}  {type:"close"}  {type:"select", id}  {type:"mouse", on}
+// state also carries mouse (the controller mouse is on) and mouseKey (its shortcut).
 "use strict";
 
 const host = window.chrome && window.chrome.webview;
@@ -15,6 +19,9 @@ let levels = {};
 let view = "panel";     // panel | tester
 let expanded = 0;       // 0 none, 1 outputs, 2 microphones
 let testing = null;     // pad under test
+let padMode = false;    // a controller is driving the panel: show the focus ring and the button help
+let focusKey = null;    // data-nav of the focused item
+let panelCombo = "L1 + Right + Triangle";   // the controller shortcut that opens / hides the panel
 const svgCache = {};
 
 // ------------------------------------------------------------ icons
@@ -29,6 +36,7 @@ const I = {
   handbrake: '<svg viewBox="0 0 24 24"><path d="M6.5 21h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="9.8" y="10" width="4.4" height="10" rx="1.6" fill="currentColor"/><path d="M12 11L16.2 4.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><circle cx="16.6" cy="3.6" r="2.2" fill="currentColor"/></svg>',
   chev: '<svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  cursor: '<svg viewBox="0 0 24 24"><path d="M5 2.8l13.6 11.1-6.1.6 3.6 6.9-2.6 1.3-3.5-7L5.6 20z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   back: '<svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
@@ -89,7 +97,7 @@ function volumeHtml(e, sec) {
   if (e.vol === undefined) return "";
   const pct = Math.round(e.vol * 100);
   const on = sec === 2 ? I.mic : I.speaker, off = sec === 2 ? I.micOff : I.speakerOff;
-  return `<div class="vol${e.mute ? " muted" : ""}" data-id="${esc(e.id)}">
+  return `<div class="vol${e.mute ? " muted" : ""}" data-id="${esc(e.id)}" data-sec="${sec}" data-nav="vol-${sec}">
       <button class="icon-btn mute" data-act="mute" data-id="${esc(e.id)}" data-m="${e.mute ? 0 : 1}" title="${e.mute ? "Unmute" : "Mute"}">${e.mute ? off : on}</button>
       <input type="range" min="0" max="100" value="${pct}" style="--p:${pct}%" aria-label="Volume">
       <span class="pct">${e.mute ? "Muted" : pct + "%"}</span></div>`;
@@ -132,13 +140,13 @@ function sectionHtml(sec, title, list, def) {
   // Brand logo in the icon column when the brand is known, otherwise the device-type icon.
   const icon = (e) => logo(audioBrand(e.name)) || (sec === 2 ? I.mic : I[audioKind(e.name)]);
   const open = expanded === sec;
-  h += `<div class="dev${open ? " open" : ""}"><div class="row head" data-act="toggle" data-sec="${sec}">
+  h += `<div class="dev${open ? " open" : ""}"><div class="row head" data-act="toggle" data-sec="${sec}" data-nav="head-${sec}">
           <span class="ico">${icon(active)}</span><span class="name">${esc(active.name)}</span>${meter(active.id)}<span class="chev">${I.chev}</span></div>
           ${volumeHtml(active, sec)}</div>`;
   if (open)
     for (const e of list)
       if (e.id !== active.id)
-        h += `<div class="row item" data-act="select" data-id="${esc(e.id)}"><span class="ico">${icon(e)}</span><span class="name">${esc(e.name)}</span>${meter(e.id)}</div>`;
+        h += `<div class="row item" data-act="select" data-id="${esc(e.id)}" data-sec="${sec}" data-nav="item-${esc(e.id)}"><span class="ico">${icon(e)}</span><span class="name">${esc(e.name)}</span>${meter(e.id)}</div>`;
   return h;
 }
 
@@ -156,16 +164,25 @@ function batteryHtml(p) {
 }
 
 function panelHtml() {
-  let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" title="Close">${I.close}</button></header>`;
+  let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
   h += `<h2>Controllers</h2>`;
   if (!state.pads.length) h += `<div class="none">No controllers connected</div>`;
   for (const p of state.pads)
-    h += `<div class="card" data-act="test" data-key="${esc(p.key)}">
+    h += `<div class="card" data-act="test" data-key="${esc(p.key)}" data-nav="card-${esc(p.key)}">
             <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
             <span class="who"><div class="nm">${esc(p.name)}</div></span>
             ${batteryHtml(p)}</div>`;
+  // the mouse waits while the panel is open (the controller drives the panel then)
+  const mouseSub = (state.mouse ? "On · " : "") + (state.mouseKey ? esc(state.mouseKey) : "No shortcut");
+  h += `<div class="card switch-row" data-act="mouse" data-nav="mouse" role="switch" aria-checked="${state.mouse ? "true" : "false"}">
+          <span class="disc">${I.cursor}</span>
+          <span class="who"><div class="nm">Use as mouse</div><div class="sub">${mouseSub}</div></span>
+          <span class="switch${state.mouse ? " on" : ""}"><b></b></span></div>`;
+  if (padMode)
+    h += `<div class="pad-help"><span><b>A ✕</b> select</span><span><b>B ◯</b> back</span><span><b>X ▢</b> mute</span><span><b>◀ ▶</b> volume · device</span></div>
+          ${panelCombo ? `<div class="hint-line pad-combo">${esc(panelCombo)} hides the panel</div>` : ""}`;
   return h + `</div>`;
 }
 
@@ -186,6 +203,7 @@ function testerHtml(p) {
   h += `<div class="stage" id="stage">${stageHtml(p)}</div>`;
   if (["xbox", "dualsense", "switchpro", "joycon"].includes(p.kind))
     h += `<div class="hint-line">Audio output: hold D-pad right + ${p.kind === "xbox" ? "LB" : (SHOULDERS[p.kind] || ["L1"])[0]} and flick the right stick</div>`;
+  h += `<div class="hint-line">Back to the panel: hold ${p.kind === "dualsense" ? "◯" : p.kind === "switchpro" || p.kind === "joycon" ? "A" : "B"} on any controller</div>`;
   return h + `</div>`;
 }
 
@@ -488,9 +506,107 @@ function render() {
     }
   }
   if (view === "panel") $app.innerHTML = panelHtml();
+  applyFocus();
   updateMeters();
   postSize();
 }
+
+// ------------------------------------------------------------ controller navigation
+// The host turns any controller's D-pad / left stick and face buttons into {type:"pad"} messages
+// while the panel is open. Everything the mouse can do here, the controller can do too.
+const navItems = () => [...document.querySelectorAll(".panel [data-nav]")];
+
+function applyFocus() {
+  document.body.classList.toggle("pad-mode", padMode);
+  document.querySelectorAll(".nav-focus").forEach((e) => e.classList.remove("nav-focus"));
+  if (!padMode || view !== "panel") return;
+  const items = navItems();
+  if (!items.length) return;
+  let el = items.find((e) => e.dataset.nav === focusKey);
+  if (!el) { el = items.find((e) => e.dataset.nav !== "close") || items[0]; focusKey = el.dataset.nav; }
+  el.classList.add("nav-focus");
+  el.scrollIntoView({ block: "nearest" });
+}
+
+function focusAt(el) { if (el) { focusKey = el.dataset.nav; applyFocus(); } }
+
+function openTester(key) {
+  testing = state.pads.find((p) => p.key === key);
+  if (testing) { view = "tester"; lastStamp = 0; lastChange = 0; axisRest = {}; axisSeen = new Set(); render(); }
+}
+
+function backToPanel() { view = "panel"; testing = null; render(); }
+
+// The active device of a section, its list, and the next / previous one.
+function stepDevice(sec, dir) {
+  const list = sec === 1 ? state.outs : state.mics, def = sec === 1 ? state.defOut : state.defMic;
+  if (list.length < 2) return;
+  const i = Math.max(0, list.findIndex((e) => e.id === def));
+  send({ type: "select", id: list[(i + dir + list.length) % list.length].id });
+}
+
+function onPad(btn) {
+  if (view === "tester") {                       // every button is being tested: only a long B leaves
+    if (btn === "bhold") backToPanel();
+    return;
+  }
+  if (btn === "bhold") return;
+  if (btn === "start") return send({ type: "close" });
+  if (!padMode && btn !== "b") {                 // opened with the mouse: the first press shows the focus
+    padMode = true;
+    return render();
+  }
+  const items = navItems();
+  const i = items.findIndex((e) => e.dataset.nav === focusKey);
+  const el = items[i];
+  const kind = el ? el.dataset.nav.split("-")[0] : "";
+  switch (btn) {
+    case "up": case "down":
+      focusAt(items[Math.max(0, Math.min(items.length - 1, (i < 0 ? 0 : i) + (btn === "up" ? -1 : 1)))]);
+      break;
+    case "left": case "right": {
+      const d = btn === "right" ? 1 : -1;
+      if (kind === "vol") setVolume(el, +el.querySelector("input").value + d * 5);
+      else if (kind === "head") stepDevice(+el.dataset.sec, d);
+      break;
+    }
+    case "a":
+      if (!el) break;
+      if (kind === "vol") { const m = el.querySelector("[data-act=mute]"); if (m) m.click(); }
+      else if (kind === "head") {
+        const sec = +el.dataset.sec;
+        expanded = expanded === sec ? 0 : sec;
+        render();
+        const first = expanded && document.querySelector(`.row.item[data-sec="${sec}"]`);
+        if (first) focusAt(first);
+      }
+      else if (kind === "item") { const sec = +el.dataset.sec; el.click(); focusKey = "head-" + sec; applyFocus(); }
+      else el.click();                           // close button, controller card
+      break;
+    case "x": {
+      const dev = el && el.closest(".dev");
+      const m = dev && dev.querySelector("[data-act=mute]");
+      if (m) m.click();
+      break;
+    }
+    case "b":
+      if (expanded) { focusKey = "head-" + expanded; expanded = 0; render(); }
+      else send({ type: "close" });
+      break;
+  }
+}
+
+// Moving the real mouse hands the panel back to it (the focus ring goes away).
+let lastMouse = "";
+window.addEventListener("pointermove", (e) => {
+  const at = e.screenX + "," + e.screenY;
+  if (at === lastMouse) return;                  // layout changes fire moves without a real move
+  const first = !lastMouse;
+  lastMouse = at;
+  if (first || !padMode || e.pointerType !== "mouse") return;
+  padMode = false;
+  render();
+});
 
 function updateMeters() {
   document.querySelectorAll(".meter").forEach((m) => {
@@ -516,13 +632,14 @@ $app.addEventListener("click", (e) => {
   else if (act === "mute") { send({ type: "mute", id: t.dataset.id, m: t.dataset.m === "1" }); }
   else if (act === "toggle") { expanded = expanded === +t.dataset.sec ? 0 : +t.dataset.sec; render(); }
   else if (act === "select") { send({ type: "select", id: t.dataset.id }); expanded = 0; render(); }
-  else if (act === "test") { testing = state.pads.find((p) => p.key === t.dataset.key); if (testing) { view = "tester"; lastStamp = 0; lastChange = 0; axisRest = {}; axisSeen = new Set(); render(); } }
-  else if (act === "back") { view = "panel"; testing = null; render(); }
+  else if (act === "test") openTester(t.dataset.key);
+  else if (act === "back") backToPanel();
+  else if (act === "mouse") send({ type: "mouse", on: !state.mouse });
 });
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (view === "tester") { view = "panel"; testing = null; render(); }
+  if (view === "tester") backToPanel();
   else send({ type: "close" });
 });
 
@@ -530,7 +647,13 @@ if (host) host.addEventListener("message", (e) => {
   const m = e.data;
   if (m.type === "state") { if (dragging) pendingState = m; else { state = m; render(); } }
   else if (m.type === "levels") { levels = m.levels || {}; updateMeters(); }
-  else if (m.type === "show") { view = "panel"; expanded = 0; testing = null; render(); }
+  else if (m.type === "show") {
+    view = "panel"; expanded = 0; testing = null; padMode = !!m.pad; focusKey = null;
+    if (typeof m.combo === "string") panelCombo = m.combo;
+    render();
+  }
+  else if (m.type === "shortcuts") { panelCombo = m.combo || ""; if (view === "panel") render(); }
+  else if (m.type === "pad") onPad(m.btn);
 });
 
 // Design preview without the app: index.html#preview=g29 (or xbox, dualsense, …) opens that tester.

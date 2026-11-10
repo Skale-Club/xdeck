@@ -4,6 +4,8 @@
 //    WebView2 window that shows ui/ (panel + controller tester).
 //  - Ctrl+Alt+F11 / Ctrl+Alt+F10, or hold D-pad right + L1 and flick the right stick, switch the
 //    playback device forward / back; Data\devices.txt optionally sets the order.
+//  - L1 + D-pad right + Triangle opens / hides the panel, which the controller then drives.
+//  - Every shortcut above can be changed in shortcuts.ini (read again on save, no new build).
 // Build with ..\build.ps1 (C# 5 / .NET Framework 4.8: no string interpolation, no ?. operator).
 using System;
 using System.Collections.Generic;
@@ -39,6 +41,112 @@ static class AppPaths
         }
     }
     public static string DeviceOrder { get { return Path.Combine(Data, "devices.txt"); } }
+    public static string ShortcutFile { get { return Path.Combine(Data, "shortcuts.ini"); } }
+}
+
+// shortcuts.ini in the data folder: written with the defaults on first run, read at start and again
+// whenever it is saved (XdeckApp watches it), so a shortcut changes with no new build or restart.
+static class ShortcutsFile
+{
+    public static string NextKey = "Ctrl+Alt+F11", PrevKey = "Ctrl+Alt+F10";
+
+    const string Template =
+@"# Xdeck shortcuts. Save this file and Xdeck uses the new shortcuts right away: no restart, no new build.
+# Atalhos do Xdeck. Salve este arquivo e o Xdeck já passa a usar os novos atalhos.
+#
+# Controller: button names joined by + (hold together) or , (one after another, at most 1.5 s apart),
+#   e.g.  L1 + Right + Triangle   or   L1, Right, L1, Triangle
+#   Buttons: L1 R1 L3 R3 . Up Down Left Right . Cross Circle Square Triangle . Options Share Home Touchpad
+#   Xbox names work too (LB RB A B X Y Menu View Guide); buttons go by position, so Triangle = Y.
+#   Keep in each controller shortcut a button the panel does not use (L1, R1, L3, R3, Share, Home),
+#   so pressing the shortcut does not also move the focus in the panel.
+# Keyboard: Ctrl / Alt / Shift / Win + one key (F1..F24, A..Z, 0..9, Home, PageUp, ...).
+# Leave a value empty, or write none, to turn that shortcut off.
+
+# open / hide the panel
+panel = L1 + Right + Triangle
+
+# hold these, then flick the right stick: right / up = next audio output, left / down = previous
+audio = L1 + Right
+
+# next / previous audio output from the keyboard
+audio.next = Ctrl+Alt+F11
+audio.previous = Ctrl+Alt+F10
+" + MouseSection;
+
+    // Added to a file written by an older Xdeck that has no mouse lines yet.
+    const string MouseSection =
+@"
+# turn the controller into a mouse, and back: left stick = pointer (hold LT / L2 for fine moves),
+# right stick = scroll, A / Cross = left click (hold to drag), B / Circle = right click,
+# X / Square = middle click, D-pad = arrow keys, Menu / Options = Enter, View / Share = Esc
+mouse = L1 + Right + Square
+
+# pointer speed with the stick all the way, in pixels per second (200 to 6000)
+mouse.speed = 1400
+";
+
+    public static void EnsureExists()
+    {
+        try
+        {
+            string path = AppPaths.ShortcutFile;
+            if (!File.Exists(path)) { File.WriteAllText(path, Template, new UTF8Encoding(false)); return; }
+            string text = File.ReadAllText(path, Encoding.UTF8);
+            if (!Regex.IsMatch(text, @"^\s*mouse\s*=", RegexOptions.Multiline))
+                File.AppendAllText(path, (text.EndsWith("\n") ? "" : "\r\n") + MouseSection, new UTF8Encoding(false));
+        }
+        catch { }
+    }
+
+    // Applies the file and returns its problems, one per bad line; a bad line keeps what was in use.
+    // Throws IOException while the editor still holds the file (the caller retries).
+    public static List<string> Load()
+    {
+        List<string> errors = new List<string>();
+        if (!File.Exists(AppPaths.ShortcutFile)) return errors;
+        string[] lines = File.ReadAllLines(AppPaths.ShortcutFile, Encoding.UTF8);
+        int[] panel = Shortcuts.Panel;
+        string panelText = Shortcuts.PanelText;
+        int audio = Shortcuts.Audio;
+        int[] mouse = Shortcuts.Mouse;
+        string mouseText = Shortcuts.MouseText;
+        int mouseSpeed = Shortcuts.MouseSpeed;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i].Trim();
+            if (line.Length == 0 || line[0] == '#' || line[0] == ';') continue;
+            string where = "line " + (i + 1) + ": ";
+            int eq = line.IndexOf('=');
+            if (eq < 0) { errors.Add(where + "no \"=\""); continue; }
+            string key = line.Substring(0, eq).Trim().ToLowerInvariant(), value = line.Substring(eq + 1).Trim();
+            string err;
+            uint mods, vk;
+            if (key == "mouse.speed")
+            {
+                int v;
+                if (!int.TryParse(value, out v) || v < 200 || v > 6000) { errors.Add(where + "mouse.speed takes a number from 200 to 6000"); continue; }
+                mouseSpeed = v;
+            }
+            else if (key == "panel" || key == "audio" || key == "mouse")
+            {
+                int[] steps = Shortcuts.ParsePad(value, out err);
+                if (steps == null) { errors.Add(where + err); continue; }
+                if (key == "panel") { panel = steps; panelText = value; }
+                else if (key == "mouse") { mouse = steps; mouseText = value; }
+                else if (steps.Length > 1) errors.Add(where + "audio takes buttons held together (+), not a sequence (,)");
+                else audio = steps.Length == 0 ? 0 : steps[0];
+            }
+            else if (key == "audio.next" || key == "audio.previous")
+            {
+                if (!Shortcuts.ParseKey(value, out mods, out vk, out err)) { errors.Add(where + err); continue; }
+                if (key == "audio.next") NextKey = value; else PrevKey = value;
+            }
+            else errors.Add(where + "unknown setting \"" + key + "\"");
+        }
+        Shortcuts.SetPad(panel, panelText, audio, mouse, mouseText, mouseSpeed);
+        return errors;
+    }
 }
 
 // Windows 11 hides new tray icons under the ^ arrow. Promote Xdeck's icon to the taskbar once per
@@ -395,7 +503,7 @@ static class Pads
         new string[] { "vid_7864&pid_5757", "handbrake", "Handbrake" },
     };
 
-    // HID readers (DualSense, Pro Controller), by device path: battery + the audio combo.
+    // HID readers (DualSense, Pro Controller), by device path: battery, the combos and panel navigation.
     static readonly Dictionary<string, HidReader> readers = new Dictionary<string, HidReader>();
 
     static byte[] Prop(IntPtr set, ref SP_DEVINFO_DATA d, DEVPROPKEY key)
@@ -536,7 +644,7 @@ static class Pads
     class HidReader
     {
         readonly string path, kind;
-        readonly Combo combo = new Combo();
+        readonly PadHooks hooks = new PadHooks();
         readonly PadState state;
         public volatile int Battery = -1;
         public volatile bool Charging;
@@ -657,7 +765,7 @@ static class Pads
                             state.RY = -((b[10] | (b[11] << 8)) - 32768) / 32768f;
                             ok = true;
                         }
-                        if (ok) { state.Touch(); combo.Update(state); }
+                        if (ok) { state.Touch(); hooks.Update(state); }
                     }
                 }
             }
@@ -719,6 +827,7 @@ class PadState
 
     public PadState(string kind, string key) { Kind = kind; Key = key; }
     public bool Is(int b) { return (bits & (1 << b)) != 0; }
+    public int Bits { get { return bits; } }
     public void Set(int b, bool on) { if (on) bits |= 1 << b; else bits &= ~(1 << b); }
     public void SetBits(int v) { bits = v; }
     public void Touch() { Updated = DateTime.Now; }
@@ -741,24 +850,394 @@ static class Inputs
     }
 }
 
+// ---------------------------------------------------------------- shortcuts
+// What each controller and keyboard shortcut is. These are the defaults; ShortcutsFile reads
+// shortcuts.ini over them, and again whenever that file is saved, so changing a shortcut needs no
+// new build and no restart.
+//   controller: button names joined by "+" (hold together) and "," (one after another, each step
+//               within StepMs), e.g. "L1 + Right + Triangle" or "L1, Right, L1, Triangle";
+//   keyboard:   Ctrl / Alt / Shift / Win + one key, e.g. "Ctrl+Alt+F11".
+static class Shortcuts
+{
+    public const int StepMs = 1500;
+    const int NavButtons = (1 << PadState.Up) | (1 << PadState.Down) | (1 << PadState.Left) | (1 << PadState.Right) |
+                           (1 << PadState.South) | (1 << PadState.East) | (1 << PadState.West) | (1 << PadState.Start);
+
+    public static volatile int[] Panel = { (1 << PadState.LB) | (1 << PadState.Right) | (1 << PadState.North) };
+    public static volatile string PanelText = "L1 + Right + Triangle";
+    public static volatile int Audio = (1 << PadState.LB) | (1 << PadState.Right);
+    public static volatile int[] Mouse = { (1 << PadState.LB) | (1 << PadState.Right) | (1 << PadState.West) };
+    public static volatile string MouseText = "L1 + Right + Square";
+    public static volatile int MouseSpeed = 1400;   // pointer pixels per second with the stick all the way
+    // The buttons of these shortcuts that the panel does not use (L1 by default). While one is held
+    // the controller is doing a shortcut, so the panel and the mouse mode ignore its D-pad and face
+    // buttons.
+    public static volatile int Guard = 1 << PadState.LB;
+
+    public static void SetPad(int[] panel, string panelText, int audio, int[] mouse, string mouseText, int mouseSpeed)
+    {
+        int all = audio;
+        foreach (int m in panel) all |= m;
+        foreach (int m in mouse) all |= m;
+        Panel = panel;
+        PanelText = panelText;
+        Audio = audio;
+        Mouse = mouse;
+        MouseText = mouseText;
+        MouseSpeed = mouseSpeed;
+        Guard = all & ~NavButtons;
+    }
+
+    // "" or "none" = turned off (no steps). null + error when a name is not a button.
+    public static int[] ParsePad(string text, out string error)
+    {
+        error = null;
+        string t = (text ?? "").Trim();
+        if (t.Length == 0 || t.Equals("none", StringComparison.OrdinalIgnoreCase)) return new int[0];
+        List<int> steps = new List<int>();
+        foreach (string step in t.Split(','))
+        {
+            int mask = 0;
+            foreach (string name in step.Split('+'))
+            {
+                int b = Button(name);
+                if (b < 0)
+                {
+                    error = name.Trim().Length == 0 ? "a button is missing in \"" + t + "\"" : "\"" + name.Trim() + "\" is not a controller button";
+                    return null;
+                }
+                mask |= 1 << b;
+            }
+            steps.Add(mask);
+        }
+        return steps.ToArray();
+    }
+
+    // Buttons are positional: PlayStation, Xbox and Nintendo-style names of the same spot all work.
+    // A B X Y are the Xbox positions (A bottom, Y top).
+    public static int Button(string name)
+    {
+        string n = (name ?? "").Trim().ToLowerInvariant().Replace(" ", "").Replace("-", "").Replace("_", "");
+        if (n.StartsWith("dpad")) n = n.Substring(4);
+        switch (n)
+        {
+            case "up": return PadState.Up;
+            case "down": return PadState.Down;
+            case "left": return PadState.Left;
+            case "right": return PadState.Right;
+            case "cross": case "a": case "✕": case "×": return PadState.South;
+            case "circle": case "b": case "○": case "◯": return PadState.East;
+            case "square": case "x": case "□": case "▢": return PadState.West;
+            case "triangle": case "y": case "△": return PadState.North;
+            case "l1": case "lb": case "l": return PadState.LB;
+            case "r1": case "rb": case "r": return PadState.RB;
+            case "l3": case "ls": return PadState.L3;
+            case "r3": case "rs": return PadState.R3;
+            case "share": case "create": case "back": case "view": case "select": case "minus": return PadState.Back;
+            case "options": case "start": case "menu": case "plus": return PadState.Start;
+            case "home": case "ps": case "guide": case "xbox": return PadState.Home;
+            case "touchpad": case "capture": return PadState.Extra;
+        }
+        return -1;
+    }
+
+    // "" or "none" = turned off (vk 0). false + error when the text is not a hotkey.
+    public static bool ParseKey(string text, out uint mods, out uint vk, out string error)
+    {
+        mods = 0; vk = 0; error = null;
+        string t = (text ?? "").Trim();
+        if (t.Length == 0 || t.Equals("none", StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (string raw in t.Split('+'))
+        {
+            string p = raw.Trim(), l = p.ToLowerInvariant();
+            if (l == "ctrl" || l == "control") mods |= 0x2;
+            else if (l == "alt") mods |= 0x1;
+            else if (l == "shift") mods |= 0x4;
+            else if (l == "win" || l == "windows") mods |= 0x8;
+            else if (vk != 0) { error = "\"" + t + "\" has more than one key"; return false; }
+            else
+            {
+                Keys k;
+                if (p.Length == 1 && char.IsLetterOrDigit(p[0])) vk = (uint)char.ToUpperInvariant(p[0]);
+                else if (p.Length > 0 && !char.IsDigit(p[0]) && Enum.TryParse(p, true, out k) &&
+                         ((int)k & ~0xFFFF) == 0 && ((int)k & 0xFFFF) > 7) vk = (uint)k;
+                else { error = "\"" + p + "\" is not a key"; return false; }
+            }
+        }
+        if (vk == 0) { error = "\"" + t + "\" has no key, only Ctrl / Alt / Shift / Win"; return false; }
+        return true;
+    }
+}
+
 // ---------------------------------------------------------------- the audio combo
-// Hold D-pad right + L1 (LB / L), then flick the right stick:
+// Hold the audio buttons (D-pad right + L1 by default), then flick the right stick:
 // right or up = next output, left or down = previous output.
 class Combo
 {
     public static Action<int> Fire;   // set by the app; called from input threads
     bool armed = true;
 
-    public void Update(PadState s)
+    // true when it fired on this reading
+    public bool Update(PadState s)
     {
         float x = s.RX, y = s.RY;
         float mag = Math.Max(Math.Abs(x), Math.Abs(y));
-        if (mag < 0.30f) { armed = true; return; }
-        if (!s.Is(PadState.Right) || !s.Is(PadState.LB) || !armed || mag < 0.65f) return;
+        if (mag < 0.30f) { armed = true; return false; }
+        int need = Shortcuts.Audio;
+        if (need == 0 || (s.Bits & need) != need || !armed || mag < 0.65f) return false;
         armed = false;
         int dir = Math.Abs(x) >= Math.Abs(y) ? (x > 0 ? 1 : -1) : (y > 0 ? 1 : -1);
         Action<int> f = Fire;
         if (f != null) f(dir);
+        return true;
+    }
+}
+
+// Follows one controller shortcut ("a + b" held together, or "a, b, c" one after another) through
+// the readings of one controller. A step is done on the reading where the last of its buttons goes
+// down; in a sequence, a press outside the current step breaks it (and may start it again).
+class ShortcutTracker
+{
+    int[] steps;
+    public int Step;                       // steps done so far (only a sequence gets past 0 without firing)
+    DateTime stepAt;
+
+    // true when the shortcut was completed on this reading
+    public bool Update(int[] seq, int bits, int before, int pressed, DateTime now)
+    {
+        if (seq != steps) { steps = seq; Step = 0; }
+        if (Step > 0 && (now - stepAt).TotalMilliseconds > Shortcuts.StepMs) Step = 0;
+        if (pressed == 0 || seq.Length == 0) return false;
+        int cur = seq[Step];
+        if (Step > 0 && (pressed & ~cur) != 0) { Step = 0; cur = seq[0]; }
+        if ((bits & cur) != cur || (before & cur) == cur) return false;
+        Step++;
+        stepAt = now;
+        if (Step < seq.Length) return false;
+        Step = 0;
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------- controller as mouse
+// Turned on and off with the mouse shortcut (L1 + D-pad right + Square by default) or the tray
+// menu. While it is on and the panel is closed, every controller drives the pointer.
+static class MouseMode
+{
+    public static volatile bool On;
+    public static Action<bool> Changed;   // set by the app; called from whichever thread changed it
+
+    public static void Set(bool on)
+    {
+        if (On == on) return;
+        On = on;
+        Action<bool> c = Changed;
+        if (c != null) c(on);
+    }
+
+    public static void Toggle() { Set(!On); }
+}
+
+// One controller as a mouse:
+//   left stick  pointer (speed grows with the tilt; hold LT / L2 for fine moves)
+//   right stick scroll (up / down, left / right)
+//   A / Cross   left button (held = drag)      B / Circle  right button      X / Square  middle button
+//   D-pad       arrow keys (held = repeat)     Menu / Options  Enter         View / Share  Esc
+class PadMouse
+{
+    public static Action<int, int> Move;   // dx, dy in pixels
+    public static Action<int, int> Scroll; // vertical, horizontal wheel units (120 = one notch; + = up / right)
+    public static Action<int, bool> Click; // 0 left, 1 right, 2 middle; down / up
+    public static Action<int, bool> Key;   // virtual key; down / up (a repeat is another down)
+
+    static readonly int[] ClickPad = { PadState.South, PadState.East, PadState.West };
+    static readonly int[] KeyPad = { PadState.Up, PadState.Down, PadState.Left, PadState.Right, PadState.Start, PadState.Back };
+    static readonly int[] KeyVk = { 0x26, 0x28, 0x25, 0x27, 0x0D, 0x1B };
+    const int RepeatDelayMs = 400, RepeatMs = 45;
+    const double Dead = 0.18, NotchesPerSec = 14;
+
+    int down;                              // pad buttons whose mouse button / key is down
+    readonly DateTime[] keySince = new DateTime[6], keyLast = new DateTime[6];
+    DateTime last;
+    double fx, fy, fv, fh;                 // fractions of a pixel / notch still to send
+
+    public void Update(PadState s, int bits, int pressed, bool run, int guard, DateTime now)
+    {
+        if (!run) { ReleaseAll(); last = DateTime.MinValue; fx = fy = fv = fh = 0; return; }
+        double dt = last == DateTime.MinValue ? 0 : Math.Min((now - last).TotalSeconds, 0.05);
+        last = now;
+        bool guarded = (bits & guard) != 0;  // L1 held: the buttons belong to a shortcut
+
+        // pointer
+        double speed = Shortcuts.MouseSpeed * (s.LT > 0.5f ? 0.25 : 1.0);
+        double vx, vy;
+        Curve(s.LX, -s.LY, out vx, out vy);
+        fx += vx * speed * dt;
+        fy += vy * speed * dt;
+        int ix = (int)fx, iy = (int)fy;
+        fx -= ix; fy -= iy;
+        if (ix != 0 || iy != 0) { Action<int, int> m = Move; if (m != null) m(ix, iy); }
+
+        // scroll, in whole notches (some apps take any wheel message as a full notch)
+        double sx, sy;
+        Curve(s.RX, s.RY, out sx, out sy);
+        if (guarded) { sx = sy = 0; fv = fh = 0; }   // the audio combo flicks the right stick
+        fv += sy * NotchesPerSec * dt;
+        fh += sx * NotchesPerSec * dt;
+        int nv = (int)fv, nh = (int)fh;
+        fv -= nv; fh -= nh;
+        if (nv != 0 || nh != 0) { Action<int, int> w = Scroll; if (w != null) w(nv * 120, nh * 120); }
+
+        // buttons: a press starts only on its own rising edge and outside a shortcut; a release
+        // always lets go of what was pressed
+        for (int i = 0; i < ClickPad.Length; i++)
+        {
+            int b = 1 << ClickPad[i];
+            if ((down & b) == 0 && (pressed & b) != 0 && !guarded) { down |= b; SendClick(i, true); }
+            else if ((down & b) != 0 && (bits & b) == 0) { down &= ~b; SendClick(i, false); }
+        }
+        for (int i = 0; i < KeyPad.Length; i++)
+        {
+            int b = 1 << KeyPad[i];
+            if ((down & b) == 0 && (pressed & b) != 0 && !guarded)
+            { down |= b; keySince[i] = keyLast[i] = now; SendKey(KeyVk[i], true); }
+            else if ((down & b) != 0 && (bits & b) == 0) { down &= ~b; SendKey(KeyVk[i], false); }
+            else if ((down & b) != 0 && i < 4 && (now - keySince[i]).TotalMilliseconds >= RepeatDelayMs &&
+                     (now - keyLast[i]).TotalMilliseconds >= RepeatMs)
+            { keyLast[i] = now; SendKey(KeyVk[i], true); }
+        }
+    }
+
+    // Round dead zone, then a squared response: small tilts are precise, a full tilt is fast.
+    static void Curve(float x, float y, out double ox, out double oy)
+    {
+        double mag = Math.Sqrt(x * x + y * y);
+        if (mag <= Dead) { ox = oy = 0; return; }
+        double t = Math.Min(1, (mag - Dead) / (1 - Dead));
+        double k = t * t / mag;
+        ox = x * k; oy = y * k;
+    }
+
+    void ReleaseAll()
+    {
+        if (down == 0) return;
+        for (int i = 0; i < ClickPad.Length; i++) if ((down & (1 << ClickPad[i])) != 0) SendClick(i, false);
+        for (int i = 0; i < KeyPad.Length; i++) if ((down & (1 << KeyPad[i])) != 0) SendKey(KeyVk[i], false);
+        down = 0;
+    }
+
+    static void SendClick(int which, bool isDown) { Action<int, bool> c = Click; if (c != null) c(which, isDown); }
+    static void SendKey(int vk, bool isDown) { Action<int, bool> k = Key; if (k != null) k(vk, isDown); }
+}
+
+// Everything one controller drives, fed from its input thread after each reading:
+//  - the audio combo (above);
+//  - the panel shortcut (L1 + D-pad right + Triangle by default) to open or hide the panel;
+//  - the mouse shortcut (L1 + D-pad right + Square by default) and the mouse mode itself;
+//  - panel navigation while the panel is open: D-pad / left stick, A, B, X, Menu, and holding B.
+class PadHooks
+{
+    public static Action Toggle;          // the panel shortcut was pressed
+    public static Action<string> Nav;     // "up" "down" "left" "right" "a" "b" "x" "start" "bhold"
+    public static volatile bool NavActive; // the panel is open: send navigation
+
+    const int RepeatDelayMs = 380, RepeatMs = 110, BHoldMs = 700;
+    const int Wait = -2;                   // dirHeld: a direction is still held from a shortcut; wait for release
+
+    readonly Combo combo = new Combo();
+    readonly ShortcutTracker panelKey = new ShortcutTracker(), mouseKey = new ShortcutTracker();
+    readonly PadMouse mouse = new PadMouse();
+    int prev;
+    // Navigation that happens mid-sequence is held back, so a D-pad step of the sequence does not move
+    // the focus or the volume; it is dropped if the sequence completes, sent if it breaks.
+    readonly List<string> held = new List<string>();
+    int dirHeld = -1;                      // PadState.Up/Down/Left/Right being held (D-pad or stick), -1 none
+    DateTime dirSince, dirLast;
+    DateTime bSince;
+    bool bFired;
+
+    bool InSequence { get { return panelKey.Step > 0 || mouseKey.Step > 0; } }
+
+    public void Update(PadState s)
+    {
+        DateTime now = DateTime.Now;
+        int bits = s.Bits, before = prev;
+        int pressed = bits & ~before;      // rising edges
+        prev = bits;
+
+        if (combo.Update(s)) { panelKey.Step = mouseKey.Step = 0; held.Clear(); }
+
+        // -------- shortcuts
+        if (panelKey.Update(Shortcuts.Panel, bits, before, pressed, now))
+        {
+            held.Clear();
+            Action t = Toggle;
+            if (t != null) t();
+        }
+        if (mouseKey.Update(Shortcuts.Mouse, bits, before, pressed, now)) { held.Clear(); MouseMode.Toggle(); }
+        if (!InSequence) Flush();          // a sequence broke or timed out: what it held back goes out
+
+        mouse.Update(s, bits, pressed, MouseMode.On && !NavActive, Shortcuts.Guard, now);
+
+        if (!NavActive) { held.Clear(); dirHeld = Wait; bFired = true; return; }
+
+        // While a shortcut button the panel does not use (L1) is held, the D-pad and face buttons
+        // belong to the shortcut. A direction still held when it is let go waits for its release.
+        if ((bits & Shortcuts.Guard) != 0) { dirHeld = Wait; bFired = true; return; }
+
+        // -------- navigation
+        if ((pressed & (1 << PadState.South)) != 0) Emit("a");
+        if ((pressed & (1 << PadState.East)) != 0) Emit("b");
+        if ((pressed & (1 << PadState.West)) != 0) Emit("x");
+        if ((pressed & (1 << PadState.Start)) != 0) Emit("start");
+
+        if (s.Is(PadState.East))
+        {
+            if ((pressed & (1 << PadState.East)) != 0) { bSince = now; bFired = false; }
+            if (!bFired && (now - bSince).TotalMilliseconds >= BHoldMs) { bFired = true; Emit("bhold"); }
+        }
+
+        int dir = Direction(s);
+        if (dir < 0) dirHeld = -1;
+        else if (dirHeld == Wait) { }
+        else if (dir != dirHeld) { dirHeld = dir; dirSince = dirLast = now; Emit(DirName(dir)); }
+        else if ((now - dirSince).TotalMilliseconds >= RepeatDelayMs && (now - dirLast).TotalMilliseconds >= RepeatMs)
+        { dirLast = now; Emit(DirName(dir)); }
+    }
+
+    // D-pad first, then the left stick (with hysteresis so a resting stick never drifts the focus).
+    int Direction(PadState s)
+    {
+        if (s.Is(PadState.Up)) return PadState.Up;
+        if (s.Is(PadState.Down)) return PadState.Down;
+        if (s.Is(PadState.Left)) return PadState.Left;
+        if (s.Is(PadState.Right)) return PadState.Right;
+        float x = s.LX, y = s.LY, ax = Math.Abs(x), ay = Math.Abs(y);
+        float need = dirHeld >= 0 ? 0.35f : 0.6f;
+        if (Math.Max(ax, ay) < need) return -1;
+        if (ax >= ay) return x > 0 ? PadState.Right : PadState.Left;
+        return y > 0 ? PadState.Up : PadState.Down;
+    }
+
+    static string DirName(int d)
+    {
+        return d == PadState.Up ? "up" : d == PadState.Down ? "down" : d == PadState.Left ? "left" : "right";
+    }
+
+    void Emit(string what)
+    {
+        if (InSequence) { held.Add(what); return; }
+        Action<string> n = Nav;
+        if (n != null) n(what);
+    }
+
+    void Flush()
+    {
+        if (held.Count == 0) return;
+        string[] q = held.ToArray();
+        held.Clear();
+        Action<string> n = Nav;
+        if (n != null && NavActive) foreach (string w in q) n(w);
     }
 }
 
@@ -780,7 +1259,7 @@ static class XInputPoller
 
     static void Run()
     {
-        Combo[] combos = { new Combo(), new Combo(), new Combo(), new Combo() };
+        PadHooks[] hooks = { new PadHooks(), new PadHooks(), new PadHooks(), new PadHooks() };
         PadState[] states = new PadState[4];
         for (int i = 0; i < 4; i++) states[i] = new PadState("xbox", "xinput" + i);
         int[] misses = new int[4];
@@ -816,10 +1295,63 @@ static class XInputPoller
                 s.LT = x.lt / 255f; s.RT = x.rt / 255f;
                 s.Touch();
                 Inputs.Add(s);
-                combos[i].Update(s);
+                hooks[i].Update(s);
             }
             Thread.Sleep(any ? 8 : 30);
         }
+    }
+}
+
+// Mouse and keyboard events for the controller mouse (PadMouse). Windows does not let a normal app
+// send input to a window that runs as administrator, so those ignore it.
+static class Inject
+{
+    [StructLayout(LayoutKind.Sequential)]
+    struct MouseInput { public int dx, dy; public int data; public uint flags, time; public IntPtr extra; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct KeyInput { public ushort vk, scan; public uint flags, time; public IntPtr extra; }
+    [StructLayout(LayoutKind.Explicit)]
+    struct Input
+    {
+        [FieldOffset(0)] public uint type;      // 0 mouse, 1 keyboard
+        [FieldOffset(8)] public MouseInput mi;  // x64: the union starts after 4 bytes of padding
+        [FieldOffset(8)] public KeyInput ki;
+    }
+    [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, Input[] inputs, int size);
+    [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint type);
+
+    const uint MOVE = 0x1, WHEEL = 0x800, HWHEEL = 0x1000, KEYUP = 0x2, EXTENDED = 0x1;
+    static readonly uint[] ClickDown = { 0x2, 0x8, 0x20 }, ClickUp = { 0x4, 0x10, 0x40 };   // left, right, middle
+
+    static void Send(Input i) { SendInput(1, new Input[] { i }, Marshal.SizeOf(typeof(Input))); }
+
+    static void Mouse(int dx, int dy, int data, uint flags)
+    {
+        Input i = new Input();
+        i.type = 0;
+        i.mi.dx = dx; i.mi.dy = dy; i.mi.data = data; i.mi.flags = flags;
+        Send(i);
+    }
+
+    public static void Move(int dx, int dy) { Mouse(dx, dy, 0, MOVE); }
+
+    public static void Scroll(int vertical, int horizontal)
+    {
+        if (vertical != 0) Mouse(0, 0, vertical, WHEEL);
+        if (horizontal != 0) Mouse(0, 0, horizontal, HWHEEL);
+    }
+
+    public static void Click(int which, bool down) { Mouse(0, 0, 0, down ? ClickDown[which] : ClickUp[which]); }
+
+    public static void Key(int vk, bool down)
+    {
+        Input i = new Input();
+        i.type = 1;
+        i.ki.vk = (ushort)vk;
+        i.ki.scan = (ushort)MapVirtualKey((uint)vk, 0);
+        bool extended = vk >= 0x21 && vk <= 0x2E;   // arrows, Home / End, Page Up / Down, Insert, Delete
+        i.ki.flags = (down ? 0 : KEYUP) | (extended ? EXTENDED : 0);
+        Send(i);
     }
 }
 
@@ -1312,32 +1844,99 @@ class WebPanel : Form
     }
 
     // ------------------------------------------------ open / close
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+
+    bool padMode;                 // opened from a controller: the page shows a focus ring from the start
+    IntPtr returnTo = IntPtr.Zero; // the window (usually the game) that had the focus before the panel
+
+    public bool Open { get { return Visible && !prewarming; } }
+
     public void Toggle()
     {
-        if (Visible && !prewarming) HidePanel();
+        if (Open) HidePanel();
         else ShowPanel();
     }
 
-    public void ShowPanel()
+    // The controller sequence: open or hide, and remember that a controller drives it.
+    public void TogglePad()
     {
+        if (Open) HidePanel();
+        else ShowPanel(true);
+    }
+
+    public void ShowPanel() { ShowPanel(false); }
+
+    public void ShowPanel(bool fromPad)
+    {
+        bool wasOpen = Open;
+        padMode = fromPad;
         wantShow = true;
         prewarming = false;
-        if (ready) { Post(new Dictionary<string, object> { { "type", "show" } }); SendState(); }
+        if (!wasOpen)
+        {
+            // from the tray the foreground is the taskbar itself; only a controller opens it over a game
+            IntPtr fg = GetForegroundWindow();
+            returnTo = fromPad && fg != Handle ? fg : IntPtr.Zero;
+        }
+        if (ready) { Post(ShowMessage()); SendState(); }
         Place();
         if (!Visible) Show();
-        Activate();
+        if (fromPad) ForceForeground(); else Activate();
         web.Focus();
         levelsTick.Start();
         refresh.Start();
+        PadHooks.NavActive = true;
     }
 
     public void HidePanel()
     {
+        bool hadFocus = GetForegroundWindow() == Handle;
+        PadHooks.NavActive = false;
         wantShow = false;
         levelsTick.Stop();
         refresh.Stop();
         Meters.CloseAll();
         Hide();
+        // give the focus back to the game (or whatever was in front), so it gets its input again
+        if (hadFocus && returnTo != IntPtr.Zero && IsWindow(returnTo)) SetForegroundWindow(returnTo);
+        returnTo = IntPtr.Zero;
+    }
+
+    Dictionary<string, object> ShowMessage()
+    {
+        return new Dictionary<string, object> { { "type", "show" }, { "pad", padMode }, { "combo", Shortcuts.PanelText } };
+    }
+
+    // shortcuts.ini changed: refresh the hint that names the panel shortcut
+    public void ShortcutsChanged()
+    {
+        if (ready) Post(new Dictionary<string, object> { { "type", "shortcuts" }, { "combo", Shortcuts.PanelText } });
+        SendState();   // the mouse switch names its shortcut
+    }
+
+    // A controller press is not user input Windows lets a background app take the focus with, so
+    // attach to the foreground thread for a moment (the tray click does not need this).
+    void ForceForeground()
+    {
+        IntPtr fg = GetForegroundWindow();
+        uint me = GetCurrentThreadId();
+        uint other = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, IntPtr.Zero);
+        bool attached = other != 0 && other != me && AttachThreadInput(me, other, true);
+        try { BringWindowToTop(Handle); SetForegroundWindow(Handle); Activate(); }
+        finally { if (attached) AttachThreadInput(me, other, false); }
+    }
+
+    // Controller navigation from PadHooks, on the UI thread.
+    public void Nav(string what)
+    {
+        if (!Open || !ready) return;
+        Post(new Dictionary<string, object> { { "type", "pad" }, { "btn", what } });
     }
 
     public void Reload() { if (Visible && !prewarming) SendState(); }
@@ -1372,7 +1971,7 @@ class WebPanel : Form
                 ready = true;
                 SendState();
                 if (prewarming) { prewarming = false; Hide(); }
-                else if (wantShow) Post(new Dictionary<string, object> { { "type", "show" } });
+                else if (wantShow) Post(ShowMessage());
                 break;
             case "size":
                 float s = Scale_();
@@ -1393,6 +1992,9 @@ class WebPanel : Form
             case "mute":
                 try { Audio.SetMute((string)m["id"], Convert.ToBoolean(m["m"])); } catch { }
                 SendState();
+                break;
+            case "mouse":
+                try { MouseMode.Set(Convert.ToBoolean(m["on"])); } catch { }
                 break;
         }
     }
@@ -1426,8 +2028,12 @@ class WebPanel : Form
             { "pads", pads.ConvertAll(delegate (Pad p) { return (object)new Dictionary<string, object> {
                 { "key", p.Mac }, { "kind", p.Kind }, { "name", p.Name }, { "index", p.Index },
                 { "battery", p.Battery }, { "charging", p.Charging }, { "conn", p.Conn } }; }) },
+            { "mouse", MouseMode.On }, { "mouseKey", Shortcuts.MouseText },
         });
     }
+
+    // the controller mouse was turned on or off (from any place): refresh its switch
+    public void MouseChanged() { SendState(); }
 
     void SendLevels()
     {
@@ -1451,9 +2057,15 @@ class XdeckApp : Form
     readonly Banner banner = new Banner();
     readonly WebPanel panel = new WebPanel();
     readonly NotifyIcon tray = new NotifyIcon();
+    ToolStripMenuItem mouseItem;
 
     public XdeckApp()
     {
+        // shortcuts.ini first, so the hotkeys registered with the window handle are the ones it names
+        ShortcutsFile.EnsureExists();
+        try { startupErrors = ShortcutsFile.Load(); } catch { }
+        WatchShortcuts();
+
         ShowInTaskbar = false;
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
 
@@ -1471,6 +2083,10 @@ class XdeckApp : Form
         if (Autostart.ForAllUsers()) { autostart.Text = "Start with Windows (all users)"; autostart.Enabled = false; }
         else autostart.Click += delegate { Autostart.Set(!Autostart.IsOn()); autostart.Checked = Autostart.IsOn(); };
         menu.Items.Add(autostart);
+        mouseItem = new ToolStripMenuItem("Controller as mouse");
+        mouseItem.Click += delegate { MouseMode.Toggle(); };
+        menu.Items.Add(mouseItem);
+        menu.Items.Add("Edit shortcuts…", null, delegate { EditShortcuts(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit Xdeck", null, delegate { tray.Visible = false; Application.Exit(); });
         tray.ContextMenuStrip = menu;
@@ -1487,6 +2103,30 @@ class XdeckApp : Form
         Combo.Fire = delegate (int dir)
         {
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { Cycle(dir); });
+        };
+        // Controller panel shortcut (L1 + right + Triangle) -> open / hide the panel; navigation while open.
+        PadHooks.Toggle = delegate
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.TogglePad(); });
+        };
+        PadHooks.Nav = delegate (string what)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.Nav(what); });
+        };
+        // Controller as mouse: input goes straight out from the controller threads; the banner, the
+        // tray check and the panel switch follow on the UI thread.
+        PadMouse.Move = Inject.Move;
+        PadMouse.Scroll = Inject.Scroll;
+        PadMouse.Click = Inject.Click;
+        PadMouse.Key = Inject.Key;
+        MouseMode.Changed = delegate (bool on)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate
+            {
+                mouseItem.Checked = on;
+                banner.Show("Controller mouse", on ? "On" : "Off", "pad", 0, 0);
+                panel.MouseChanged();
+            });
         };
         XInputPoller.Start();
         System.Windows.Forms.Timer scan = new System.Windows.Forms.Timer();
@@ -1567,11 +2207,85 @@ class XdeckApp : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        List<string> problems = startupErrors ?? new List<string>();
+        problems.AddRange(RegisterKeys());
+        if (problems.Count > 0) ShowShortcutProblems(problems);
+    }
+
+    List<string> startupErrors;
+
+    // The keyboard shortcuts from shortcuts.ini; returns the ones another app already holds.
+    List<string> RegisterKeys()
+    {
+        UnregisterHotKey(Handle, 1);
+        UnregisterHotKey(Handle, 2);
         List<string> failed = new List<string>();
-        if (!RegisterHotKey(Handle, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x7A)) failed.Add("Ctrl+Alt+F11");
-        if (!RegisterHotKey(Handle, 2, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x79)) failed.Add("Ctrl+Alt+F10");
-        if (failed.Count > 0)
-            tray.ShowBalloonTip(5000, "Xdeck", "Another app is already using " + string.Join(" and ", failed.ToArray()) + ".", ToolTipIcon.Warning);
+        string[] texts = { ShortcutsFile.NextKey, ShortcutsFile.PrevKey };
+        for (int i = 0; i < 2; i++)
+        {
+            uint mods, vk;
+            string err;
+            if (!Shortcuts.ParseKey(texts[i], out mods, out vk, out err) || vk == 0) continue;
+            if (!RegisterHotKey(Handle, i + 1, mods | MOD_NOREPEAT, vk))
+                failed.Add("another app is already using " + texts[i]);
+        }
+        return failed;
+    }
+
+    void ShowShortcutProblems(List<string> problems)
+    {
+        string text = string.Join("\n", problems.ToArray());
+        if (text.Length > 240) text = text.Substring(0, 239) + "…";
+        tray.ShowBalloonTip(8000, "Xdeck shortcuts", text, ToolTipIcon.Warning);
+    }
+
+    void EditShortcuts()
+    {
+        ShortcutsFile.EnsureExists();
+        try { System.Diagnostics.Process.Start("notepad.exe", "\"" + AppPaths.ShortcutFile + "\""); } catch { }
+    }
+
+    // Editors save in bursts (truncate, write, rename), so wait for a quiet moment, then read; while
+    // the editor still holds the file, try again shortly.
+    FileSystemWatcher shortcutWatch;
+    System.Windows.Forms.Timer shortcutDelay;
+
+    void WatchShortcuts()
+    {
+        shortcutDelay = new System.Windows.Forms.Timer();
+        shortcutDelay.Interval = 400;
+        shortcutDelay.Tick += delegate { ReloadShortcuts(); };
+        try
+        {
+            shortcutWatch = new FileSystemWatcher(AppPaths.Data, "shortcuts.ini");
+            shortcutWatch.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size;
+            FileSystemEventHandler changed = delegate
+            {
+                if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { shortcutDelay.Stop(); shortcutDelay.Start(); });
+            };
+            shortcutWatch.Changed += changed;
+            shortcutWatch.Created += changed;
+            shortcutWatch.Renamed += delegate (object s, RenamedEventArgs e) { changed(s, e); };
+            shortcutWatch.EnableRaisingEvents = true;
+        }
+        catch { }
+    }
+
+    void ReloadShortcuts()
+    {
+        shortcutDelay.Stop();
+        List<string> problems;
+        try { problems = ShortcutsFile.Load(); }
+        catch (IOException) { shortcutDelay.Start(); return; }
+        catch (UnauthorizedAccessException) { shortcutDelay.Start(); return; }
+        problems.AddRange(RegisterKeys());
+        panel.ShortcutsChanged();
+        if (problems.Count > 0) ShowShortcutProblems(problems);
+        else
+        {
+            string p = Shortcuts.PanelText.Length > 0 ? Shortcuts.PanelText : "off";
+            tray.ShowBalloonTip(3000, "Xdeck shortcuts updated", "Panel: " + p, ToolTipIcon.Info);
+        }
     }
 
     protected override void OnHandleDestroyed(EventArgs e)

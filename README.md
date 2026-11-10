@@ -27,7 +27,8 @@ running (one per signed-in user).
 Xdeck lives in the system tray as a gear:
 
 - **Left click**: open or close the panel. It stays open until you close it (×, Esc or another click).
-- **Right click**: open the panel, next / previous audio output, **Start with Windows**, quit.
+- **Right click**: open the panel, next / previous audio output, **Start with Windows**,
+  **Controller as mouse**, **Edit shortcuts…**, quit.
 
 ## The panel
 
@@ -40,6 +41,51 @@ Xdeck lives in the system tray as a gear:
 The controller test shows the real controller: Xbox, DualSense, Pro Controller and Joy-Cons light up
 button by button; the G29 shows the wheel angle and pedals; the handbrake shows the lever.
 
+## The panel from the controller
+
+Hold **L1 + D-pad right** and press **Triangle** (Xbox: LB + right + Y; Nintendo: L + right + X) to
+open the panel over whatever is running. The same combination hides it again and gives the focus
+back to the game. Any controller Xdeck reads works. To use other buttons, see
+[Change the shortcuts](#change-the-shortcuts).
+
+While the panel is open, the controller drives all of it:
+
+| Button | What it does |
+|---|---|
+| D-pad / left stick up and down | Move between the close button, each device, its volume and the controllers |
+| Left / right on a device | Switch to the previous / next output or microphone |
+| Left / right on a volume | Volume −/+ 5% |
+| A (✕) | Open the device list, pick a device, mute or unmute a volume, test a controller, close |
+| X (▢) | Mute or unmute the focused device |
+| B (◯) | Close the device list, or close the panel |
+| Menu / Options | Close the panel |
+| Hold B (◯) | Leave the controller test (every other button is being tested there) |
+
+Opened with the mouse, the panel shows the focus ring at the first controller press; moving the mouse
+hides it. Windows sends controller input to every app, so a game that keeps reading the controller in
+the background still sees these presses.
+
+## The controller as a mouse
+
+Hold **L1 + D-pad right** and press **Square** (Xbox: LB + right + X) to turn any controller into a
+mouse, and again to turn it back. The **Use as mouse** switch in the panel and **Controller as
+mouse** in the tray menu do the same; a banner says On or Off.
+
+| Controller | Mouse / keyboard |
+|---|---|
+| Left stick | Pointer (faster the further you push; hold LT / L2 for fine moves) |
+| Right stick | Scroll up / down, left / right |
+| A (✕) | Left click (hold to drag) |
+| B (◯) | Right click |
+| X (▢) | Middle click |
+| D-pad | Arrow keys (held = repeat) |
+| Menu / Options | Enter |
+| View / Share | Esc |
+
+While the panel is open the controller drives the panel instead. The pointer speed is
+`mouse.speed` in `shortcuts.ini`. Windows does not let Xdeck click in windows that run as
+administrator.
+
 ## Switch the audio output without the panel
 
 - `Ctrl+Alt+F11` / `Ctrl+Alt+F10`: next / previous output.
@@ -48,6 +94,28 @@ button by button; the G29 shows the wheel angle and pedals; the handbrake shows 
 - A banner on the primary screen names the new output.
 - `Data\devices.txt` (optional): output IDs, one per line, in the order to cycle. Without it every
   connected output is used, alphabetically.
+
+## Change the shortcuts
+
+Tray menu › **Edit shortcuts…** opens `shortcuts.ini` (in `%LOCALAPPDATA%\Xdeck`, or `Data\` for a
+portable copy). Save it and Xdeck uses the new shortcuts right away — no restart, no new build. A
+line it cannot use is named in a notification and keeps the shortcut that was in use.
+
+```ini
+panel = L1 + Right + Triangle      # open / hide the panel
+audio = L1 + Right                 # hold, then flick the right stick to switch the output
+audio.next = Ctrl+Alt+F11
+audio.previous = Ctrl+Alt+F10
+mouse = L1 + Right + Square        # controller as mouse on / off
+mouse.speed = 1400                 # pointer pixels per second at full tilt (200 to 6000)
+```
+
+- Controller: `+` = held together, `,` = one after another (at most 1.5 s apart), e.g.
+  `L1, Right, L1, Triangle`. PlayStation, Xbox and Nintendo names work (`L1`/`LB`, `Triangle`/`Y`,
+  `Options`/`Menu`, `Share`/`View`, `Home`, `L3`, …); buttons go by position.
+- Keep a button the panel does not use (L1, R1, L3, R3, Share, Home) in a controller shortcut, so
+  pressing it does not also move the focus in the panel.
+- Keyboard: Ctrl / Alt / Shift / Win + one key. Leave a value empty or write `none` to turn it off.
 
 ## Build
 
@@ -79,3 +147,15 @@ pelo próprio controle.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).
 - **Testar um controle:** clique no cartão dele no painel.
+- **Painel pelo controle:** segure **L1 + direcional direita** e aperte **triângulo** (Xbox: LB +
+  direita + Y). A mesma combinação esconde o painel e devolve o foco ao jogo. Com o painel aberto, tudo funciona pelo controle: direcional ou analógico esquerdo
+  navega, esquerda/direita troca o dispositivo ou ajusta o volume, **A (✕)** escolhe, **X (▢)** muta,
+  **B (◯)** volta ou fecha, e segurar **B (◯)** sai do teste de controle.
+- **Controle como mouse:** segure **L1 + direcional direita** e aperte **quadrado** (Xbox: LB +
+  direita + X) para ligar ou desligar; também tem a chave **Use as mouse** no painel. Analógico
+  esquerdo move o cursor (segure L2 / LT para ir devagar), analógico direito rola, **✕/A** clica (segure
+  para arrastar), **◯/B** é o botão direito, **▢/X** o do meio, direcional = setas, Options = Enter,
+  Share = Esc. Com o painel aberto, o controle volta a mexer no painel.
+- **Trocar os atalhos:** menu do tray › **Edit shortcuts…** abre o `shortcuts.ini`. Salve e o Xdeck
+  já usa os novos atalhos, sem reiniciar e sem compilar de novo. `+` = segurar junto, `,` = um depois
+  do outro (ex.: `panel = L1, Right, L1, Triangle`).
