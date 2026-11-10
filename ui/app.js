@@ -1,0 +1,418 @@
+// Xdeck UI. The native host (Xdeck.exe) sends:
+//   {type:"state", accent, outs:[{id,name,kind}], mics:[...], defOut, defMic, pads:[{key,kind,name,index,battery,charging,conn}]}
+//   {type:"levels", levels:{endpointId: 0..1}}
+//   {type:"show"}                               the window was just opened
+// and receives:
+//   {type:"size", w, h}  {type:"close"}  {type:"select", id}
+"use strict";
+
+const host = window.chrome && window.chrome.webview;
+const send = (m) => { if (host) host.postMessage(m); };
+const $app = document.getElementById("app");
+
+let state = { outs: [], mics: [], pads: [], defOut: null, defMic: null, accent: "#0078d4" };
+let levels = {};
+let view = "panel";     // panel | tester
+let expanded = 0;       // 0 none, 1 outputs, 2 microphones
+let testing = null;     // pad under test
+const svgCache = {};
+
+// ------------------------------------------------------------ icons
+const I = {
+  monitor: '<svg viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 16.5v3.5M8 20.5h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  tv: '<svg viewBox="0 0 24 24"><rect x="1.5" y="4.5" width="21" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6.5 20.5l1.2-3M17.5 20.5l-1.2-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  headphones: '<svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="2.5" y="13.5" width="5.5" height="8" rx="2.4" fill="currentColor"/><rect x="16" y="13.5" width="5.5" height="8" rx="2.4" fill="currentColor"/></svg>',
+  speaker: '<svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  mic: '<svg viewBox="0 0 24 24"><rect x="8.6" y="2.5" width="6.8" height="11.5" rx="3.4" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3M8.5 21h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  pad: '<svg viewBox="0 0 24 24"><path fill-rule="evenodd" fill="currentColor" d="M7.2 5.5h9.6a5 5 0 0 1 4.9 4.1l1 5.6a3.1 3.1 0 0 1-5.4 2.5L15.4 15.6H8.6l-1.9 2.1a3.1 3.1 0 0 1-5.4-2.5l1-5.6a5 5 0 0 1 4.9-4.1zM6.2 9.6v1.5H4.7v1.6h1.5v1.5h1.6v-1.5h1.5v-1.6H7.8V9.6zM16.6 9.1a1 1 0 1 0 0 .01zM18.6 11.1a1 1 0 1 0 0 .01zM14.6 11.1a1 1 0 1 0 0 .01zM16.6 13.1a1 1 0 1 0 0 .01z"/></svg>',
+  wheel: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M3.6 11h6M14.4 11h6M12 14.6v6" stroke="currentColor" stroke-width="2.4"/></svg>',
+  handbrake: '<svg viewBox="0 0 24 24"><path d="M6.5 21h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="9.8" y="10" width="4.4" height="10" rx="1.6" fill="currentColor"/><path d="M12 11L16.2 4.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><circle cx="16.6" cy="3.6" r="2.2" fill="currentColor"/></svg>',
+  chev: '<svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  close: '<svg viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  back: '<svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function audioKind(name) {
+  const n = name.toLowerCase();
+  if (/airpods|air pods|pulse|head/.test(n)) return "headphones";
+  if (/\btv\b/.test(n)) return "tv";
+  if (/monitor|display/.test(n)) return "monitor";
+  return "speaker";
+}
+
+function padIcon(kind) {
+  if (kind === "g29") return I.wheel;
+  if (kind === "handbrake") return I.handbrake;
+  return I.pad;
+}
+
+// Brand logos (ui/brands, CC0 Simple Icons / Apache Material Design Icons), tinted with CSS masks.
+const PAD_BRAND = { xbox: "xbox", dualsense: "playstation", switchpro: "nintendo", joycon: "nintendo", g29: "logitechg" };
+
+function audioBrand(name) {
+  const n = name.toLowerCase();
+  if (/roku/.test(n)) return "roku";
+  if (/acer/.test(n)) return "acer";
+  if (/airpods|apple/.test(n)) return "apple";
+  if (/pulse|playstation|dualsense/.test(n)) return "playstation";
+  if (/yeti|logitech/.test(n)) return "logitech";
+  if (/xbox/.test(n)) return "xbox";
+  if (/lark|hollyland|wireless microphone/.test(n)) return "hollyland";
+  return null;
+}
+
+const BRAND_FILE = { hollyland: "hollyland.png" };   // everything else is brands/<name>.svg
+const logo = (brand, cls) => (brand ? `<span class="logo ${cls || ""}" style="--logo:url(brands/${BRAND_FILE[brand] || brand + ".svg"})" title="${brand}"></span>` : "");
+
+const meter = (id) => `<span class="meter" data-id="${esc(id)}">${"<i></i>".repeat(12)}</span>`;
+
+// ------------------------------------------------------------ volume
+I.speakerOff = '<svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+I.micOff = '<svg viewBox="0 0 24 24"><rect x="8.6" y="2.5" width="6.8" height="11.5" rx="3.4" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3M8.5 21h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 3l16 18" stroke="var(--card)" stroke-width="4"/><path d="M4 3l16 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+let dragging = false, pendingState = null, volTimer = 0;
+
+function volumeHtml(e, sec) {
+  if (e.vol === undefined) return "";
+  const pct = Math.round(e.vol * 100);
+  const on = sec === 2 ? I.mic : I.speaker, off = sec === 2 ? I.micOff : I.speakerOff;
+  return `<div class="vol${e.mute ? " muted" : ""}" data-id="${esc(e.id)}">
+      <button class="icon-btn mute" data-act="mute" data-id="${esc(e.id)}" data-m="${e.mute ? 0 : 1}" title="${e.mute ? "Unmute" : "Mute"}">${e.mute ? off : on}</button>
+      <input type="range" min="0" max="100" value="${pct}" style="--p:${pct}%" aria-label="Volume">
+      <span class="pct">${e.mute ? "Muted" : pct + "%"}</span></div>`;
+}
+
+function setVolume(row, pct) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  const input = row.querySelector("input");
+  input.value = pct;
+  input.style.setProperty("--p", pct + "%");
+  row.querySelector(".pct").textContent = pct + "%";
+  row.classList.remove("muted");
+  clearTimeout(volTimer);                     // ~30 messages a second at most while dragging
+  volTimer = setTimeout(() => send({ type: "volume", id: row.dataset.id, v: pct / 100 }), 30);
+}
+
+$app.addEventListener("input", (e) => {
+  const row = e.target.closest(".vol");
+  if (row && e.target.type === "range") setVolume(row, +e.target.value);
+});
+$app.addEventListener("pointerdown", (e) => { if (e.target.type === "range") dragging = true; });
+window.addEventListener("pointerup", () => {
+  if (!dragging) return;
+  dragging = false;
+  if (pendingState) { state = pendingState; pendingState = null; render(); }
+});
+// mouse wheel over a device's volume row: 2% steps
+$app.addEventListener("wheel", (e) => {
+  const row = e.target.closest(".vol");
+  if (!row) return;
+  e.preventDefault();
+  setVolume(row, +row.querySelector("input").value + (e.deltaY < 0 ? 2 : -2));
+}, { passive: false });
+
+// ------------------------------------------------------------ panel
+function sectionHtml(sec, title, list, def) {
+  let h = `<h2>${title}</h2>`;
+  if (!list.length) return h + `<div class="row empty">${sec === 1 ? "No outputs connected" : "No microphones connected"}</div>`;
+  const active = list.find((e) => e.id === def) || list[0];
+  // Brand logo in the icon column when the brand is known, otherwise the device-type icon.
+  const icon = (e) => logo(audioBrand(e.name)) || (sec === 2 ? I.mic : I[audioKind(e.name)]);
+  const open = expanded === sec;
+  h += `<div class="dev${open ? " open" : ""}"><div class="row head" data-act="toggle" data-sec="${sec}">
+          <span class="ico">${icon(active)}</span><span class="name">${esc(active.name)}</span>${meter(active.id)}<span class="chev">${I.chev}</span></div>
+          ${volumeHtml(active, sec)}</div>`;
+  if (open)
+    for (const e of list)
+      if (e.id !== active.id)
+        h += `<div class="row item" data-act="select" data-id="${esc(e.id)}"><span class="ico">${icon(e)}</span><span class="name">${esc(e.name)}</span>${meter(e.id)}</div>`;
+  return h;
+}
+
+const BOLT = '<svg class="bolt" viewBox="0 0 12 16"><title>Charging</title><path d="M7.2 0L.8 9.2h4.3L3.9 16l6.6-9.6H6.1z" fill="currentColor"/></svg>';
+
+// Battery: percentage + 10 vertical pills. Charging: a bolt, and the next pill pulses.
+function batteryHtml(p) {
+  if (p.conn === "USB") return `<span class="wired">USB</span>`;
+  if (p.battery < 0) return `<span class="battery" style="color:var(--dim)">${p.charging ? BOLT : ""}—</span>`;
+  const color = p.battery <= 20 ? "var(--red)" : p.battery <= 45 ? "var(--amber)" : "var(--green)";
+  const lit = Math.max(1, Math.ceil(p.battery / 10));
+  let pills = "";
+  for (let i = 0; i < 10; i++) pills += `<i class="${i < lit ? "lit" : p.charging && i === lit ? "next" : ""}"></i>`;
+  return `<span class="battery${p.charging ? " charging" : ""}" style="--bat:${color};color:${color}" title="${p.charging ? "Charging" : "On battery"}">${p.charging ? BOLT : ""}${p.battery}%<span class="pills">${pills}</span></span>`;
+}
+
+function panelHtml() {
+  let h = `<div class="view panel"><header><h1>Xdeck</h1><button class="icon-btn close" data-act="close" title="Close">${I.close}</button></header>`;
+  h += sectionHtml(1, "Audio output", state.outs, state.defOut);
+  h += sectionHtml(2, "Microphone", state.mics, state.defMic);
+  h += `<h2>Controllers</h2>`;
+  if (!state.pads.length) h += `<div class="none">No controllers connected</div>`;
+  for (const p of state.pads)
+    h += `<div class="card" data-act="test" data-key="${esc(p.key)}">
+            <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
+            <span class="who"><div class="nm">${esc(p.name)}</div></span>
+            ${batteryHtml(p)}</div>`;
+  return h + `</div>`;
+}
+
+// ------------------------------------------------------------ tester
+const SHOULDERS = { dualsense: ["L1", "R1", "L2", "R2"], switchpro: ["L", "R", "ZL", "ZR"], joycon: ["L", "R", "ZL", "ZR"] };
+
+function testerHtml(p) {
+  let h = `<div class="view tester k-${esc(p.kind)}"><header>
+      <button class="icon-btn back" data-act="back" title="Back">${I.back}</button>
+      ${logo(PAD_BRAND[p.kind], "head")}<h1 style="flex:none">${esc(p.name)}</h1><span class="chip wait" id="live">Press any button</span><span style="flex:1"></span>
+      <span id="tbat">${p.conn === "USB" ? "" : batteryHtml(p)}</span>
+      <button class="icon-btn close" data-act="close" title="Close">${I.close}</button></header>`;
+  const sh = SHOULDERS[p.kind];
+  if (sh && p.kind !== "dualsense")
+    h += `<div class="shoulders">
+        <div class="side"><span class="trig" data-trig="6"><b></b><span>${sh[2]}</span></span><span class="sh" data-btn="4">${sh[0]}</span></div>
+        <div class="side"><span class="sh" data-btn="5">${sh[1]}</span><span class="trig" data-trig="7"><b></b><span>${sh[3]}</span></span></div></div>`;
+  h += `<div class="stage" id="stage">${stageHtml(p)}</div>`;
+  if (["xbox", "dualsense", "switchpro", "joycon"].includes(p.kind))
+    h += `<div class="hint-line">Audio output: hold D-pad right + ${p.kind === "xbox" ? "LB" : (SHOULDERS[p.kind] || ["L1"])[0]} and flick the right stick</div>`;
+  return h + `</div>`;
+}
+
+function stageHtml(p) {
+  switch (p.kind) {
+    case "xbox":
+      return `<div class="xb-wrap"><div class="xb">
+        <span class="trigger left" data-trig="6"></span><span class="trigger right" data-trig="7"></span>
+        <span class="bumper left" data-btn="4"></span><span class="bumper right" data-btn="5"></span>
+        <span class="home" data-btn="16"></span>
+        <span class="select" data-btn="8"></span><span class="start" data-btn="9"></span>
+        <span class="button a" data-btn="0"></span><span class="button b" data-btn="1"></span>
+        <span class="button x" data-btn="2"></span><span class="button y" data-btn="3"></span>
+        <span class="stick left" data-btn="10" data-stick="0"></span><span class="stick right" data-btn="11" data-stick="2"></span>
+        <span class="face up" data-btn="12"></span><span class="face down" data-btn="13"></span>
+        <span class="face left" data-btn="14"></span><span class="face right" data-btn="15"></span>
+      </div></div>`;
+    case "dualsense": return `<div class="art ds" data-svg="pads/dualsense.svg"></div>`;
+    case "switchpro": return `<div class="art sil" data-svg="pads/pro.svg"></div>`;
+    case "joycon": return `<div class="art sil" data-svg="pads/joycon.svg"></div>`;
+    case "g29":
+      return `<div class="rig"><div><svg class="wheel" id="wheel" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="44" fill="none" stroke-width="7"/><circle cx="50" cy="50" r="13" fill="#3a3a3e" stroke-width="3"/>
+          <path d="M8 46h29M63 46h29M50 63v30" stroke-width="7" stroke-linecap="round"/>
+          <path d="M50 6v8" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" style="stroke:var(--accent)"/></svg>
+          <div class="deg" id="deg">0°</div></div>
+        <div><div class="bars" id="pedals"></div></div>
+        <div class="btn-grid" id="btns"></div></div>`;
+    case "handbrake":
+      return `<div class="rig">
+        <svg class="hb" viewBox="-40 -10 300 290">
+          <rect x="40" y="226" width="140" height="34" rx="10" fill="#34343a"/>
+          <rect x="74" y="196" width="72" height="44" rx="12" fill="#44444b"/>
+          <g id="hb-lever">
+            <rect x="99" y="38" width="22" height="176" rx="11" fill="#7c7c86"/>
+            <rect x="91" y="26" width="38" height="96" rx="17" fill="#55555d"/>
+            <rect x="97" y="34" width="26" height="80" rx="12" fill="#62626b"/>
+            <circle cx="110" cy="26" r="15" fill="var(--accent)"/>
+          </g>
+          <circle cx="110" cy="214" r="12" fill="#2a2a2f" stroke="#7c7c86" stroke-width="4"/>
+        </svg>
+        <div class="bars lever" id="axes"></div></div>`;
+    default:
+      return `<div class="rig"><div class="bars" id="axes"></div><div class="btn-grid" id="btns"></div></div>`;
+  }
+}
+
+// Element ids per artwork, in standard Gamepad button order (0..17), and the stick element.
+const ART = {
+  dualsense: {
+    btn: { 0: "cross", 1: "circle", 2: "rect", 3: "triangle", 4: "l1", 5: "r1", 6: "l2", 7: "r2", 8: "create", 9: "options",
+           10: "l3", 11: "r3", 12: "dpad-up", 13: "dpad-down", 14: "dpad-right", 15: "dpad-left", 16: "ps", 17: "touchpad" },
+    sticks: [["l3group", 0], ["r3group", 2]], travel: 26,
+  },
+  switchpro: {
+    btn: { 0: "circle7838-3-6", 1: "circle7838-3-9", 2: "circle7838-3", 3: "circle7910", 8: "path7756", 9: "circle7838",
+           10: "path7483-4-9", 11: "path7483-4", 12: "rect6544", 13: "rect6544", 14: "rect6544", 15: "rect6544", 16: "circle7838-4", 17: "rect7609" },
+    sticks: [["path7483-4-9", 0], ["path7483-4", 2]], travel: 2.6,
+  },
+  joycon: {
+    btn: { 0: "circle2209", 1: "circle2207", 2: "circle2211", 3: "path2168-9", 8: "rect3315", 9: "rect2587",
+           10: "circle2205", 11: "path2168-0", 12: "circle2525", 13: "circle2529", 14: "circle2531", 15: "circle2527", 16: "path2168", 17: "rect7609" },
+    sticks: [["circle2205", 0], ["path2168-0", 2]], travel: 1.2,
+  },
+};
+
+async function loadArt() {
+  const box = document.querySelector("[data-svg]");
+  if (!box) return;
+  const url = box.getAttribute("data-svg");
+  if (!svgCache[url]) svgCache[url] = await (await fetch(url)).text();
+  box.innerHTML = svgCache[url];
+  const svg = box.querySelector("svg");
+  svg.removeAttribute("width");
+  svg.removeAttribute("height");
+  postSize();
+}
+
+// ------------------------------------------------------------ gamepad matching
+function classify(gp) {
+  const m = /Vendor:\s*([0-9a-f]{4})\s*Product:\s*([0-9a-f]{4})/i.exec(gp.id) || [];
+  const v = (m[1] || "").toLowerCase(), pr = (m[2] || "").toLowerCase();
+  if (v === "045e" || /xbox|xinput/i.test(gp.id)) return "xbox";
+  if (v === "054c") return "dualsense";
+  if (v === "057e" && pr === "2009") return "switchpro";
+  if (v === "057e") return "joycon";
+  if (v === "046d" && pr === "c24f") return "g29";
+  if (v === "7864") return "handbrake";
+  return "generic";
+}
+
+function findGamepad(p) {
+  const same = [...navigator.getGamepads()].filter((g) => g && g.connected && classify(g) === p.kind);
+  return same[p.index] || same[0] || null;
+}
+
+let raf = 0, lastStamp = 0, lastChange = 0;
+let axisRest = {}, axisSeen = new Set();   // per tester session
+
+function loop() {
+  raf = requestAnimationFrame(loop);
+  if (view !== "tester" || !testing) return;
+  const gp = findGamepad(testing);
+  const live = document.getElementById("live");
+  if (gp && gp.timestamp !== lastStamp) { lastStamp = gp.timestamp; lastChange = performance.now(); }
+  const isLive = gp && performance.now() - lastChange < 4000;
+  if (live) { live.className = "chip " + (isLive ? "live" : "wait"); live.textContent = isLive ? "Live" : gp ? "Idle" : "Press any button"; }
+  if (!gp) return;
+  const pressed = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5));
+  const value = (i) => (gp.buttons[i] ? gp.buttons[i].value : 0);
+
+  // generic attribute hooks (xbox artwork + shoulder strip)
+  document.querySelectorAll("[data-btn]").forEach((el) => el.classList.toggle("on", pressed(+el.dataset.btn)));
+  document.querySelectorAll("[data-trig]").forEach((el) => {
+    const v = value(+el.dataset.trig);
+    if (el.classList.contains("trigger")) { el.style.opacity = v > 0.01 ? 1 : 0; el.style.clipPath = `inset(${(1 - v) * 100}% 0 0 0)`; }
+    else { const b = el.querySelector("b"); if (b) b.style.width = v * 100 + "%"; }
+  });
+  document.querySelectorAll("[data-stick]").forEach((el) => {
+    const a = +el.dataset.stick, x = gp.axes[a] || 0, y = gp.axes[a + 1] || 0;
+    el.style.transform = `translate(${Math.round(x * 25)}px, ${Math.round(y * 25)}px)`;
+  });
+
+  // SVG artwork with element ids
+  const art = ART[testing.kind];
+  const svg = document.querySelector(".art svg");
+  if (art && svg) {
+    const on = new Set();
+    for (const [i, id] of Object.entries(art.btn)) {
+      const idx = +i;
+      if (idx === 6 || idx === 7 ? value(idx) > 0.05 : pressed(idx)) on.add(id);
+    }
+    svg.querySelectorAll(".on").forEach((el) => { if (!on.has(el.id)) el.classList.remove("on"); });
+    on.forEach((id) => { const el = svg.getElementById(id); if (el) el.classList.add("on"); });
+    for (const [id, a] of art.sticks) {
+      const el = svg.getElementById(id);
+      if (el) el.setAttribute("transform", `translate(${(gp.axes[a] || 0) * art.travel} ${(gp.axes[a + 1] || 0) * art.travel})`);
+    }
+  }
+
+  // wheel, pedals, handbrake, generic
+  const wheel = document.getElementById("wheel");
+  if (wheel) {
+    const deg = (gp.axes[0] || 0) * 450;            // G29: 900 degrees lock to lock
+    wheel.style.transform = `rotate(${deg}deg)`;
+    document.getElementById("deg").textContent = Math.round(deg) + "°";
+  }
+  // Pedals / levers: only axes that are actually wired (unused ones sit at exactly 0).
+  // Each bar fills from its own resting value, so +1-at-rest and -1-at-rest both read 0%.
+  const pedals = document.getElementById("pedals") || document.getElementById("axes");
+  if (pedals) {
+    const first = wheel ? 1 : 0;
+    for (let i = first; i < gp.axes.length; i++) {
+      if (!(i in axisRest)) axisRest[i] = gp.axes[i];
+      if (Math.abs(gp.axes[i]) > 0.001 || Math.abs(gp.axes[i] - axisRest[i]) > 0.05) axisSeen.add(i);
+    }
+    const shown = [...axisSeen].sort((a, b) => a - b);
+    const key = shown.join(",");
+    if (pedals.dataset.axes !== key) {
+      pedals.dataset.axes = key;
+      pedals.innerHTML = shown.map((i) => `<div data-axis="${i}"><div class="bar"><b></b></div><div class="bar-label">${testing.kind === "handbrake" && shown.length === 1 ? "Handbrake" : "Axis " + (i + 1)}</div><div class="bar-label pct">0%</div></div>`).join("");
+    }
+    pedals.querySelectorAll("[data-axis]").forEach((el) => {
+      const i = +el.dataset.axis, v = gp.axes[i] || 0, rest = axisRest[i];
+      const span = Math.abs(rest) > 0.5 ? 2 : 1;          // rest at an end: full travel is 2
+      const f = Math.max(0, Math.min(1, Math.abs(v - rest) / span));
+      el.querySelector("b").style.height = f * 100 + "%";
+      el.querySelector(".pct").textContent = Math.round(f * 100) + "%";
+      const lever = document.getElementById("hb-lever");
+      if (lever) lever.setAttribute("transform", `rotate(${-f * 42} 110 214)`);   // pulled = tilted back
+    });
+  }
+  const grid = document.getElementById("btns");
+  if (grid) {
+    if (grid.childElementCount !== gp.buttons.length) grid.innerHTML = gp.buttons.map((_, i) => `<i>${i + 1}</i>`).join("");
+    [...grid.children].forEach((el, i) => el.classList.toggle("on", pressed(i)));
+  }
+}
+
+// ------------------------------------------------------------ render + events
+function render() {
+  document.documentElement.style.setProperty("--accent", state.accent || "#0078d4");
+  if (view === "tester" && testing) {
+    const p = state.pads.find((x) => x.key === testing.key);
+    if (!p) { view = "panel"; testing = null; }
+    else if (!document.querySelector(".tester")) { testing = p; $app.innerHTML = testerHtml(p); loadArt(); }
+    else {                                       // tester stays mounted; only refresh its battery
+      testing = p;
+      const tb = document.getElementById("tbat");
+      if (tb) tb.innerHTML = p.conn === "USB" ? "" : batteryHtml(p);
+      return postSize();
+    }
+  }
+  if (view === "panel") $app.innerHTML = panelHtml();
+  updateMeters();
+  postSize();
+}
+
+function updateMeters() {
+  document.querySelectorAll(".meter").forEach((m) => {
+    const lit = Math.round((levels[m.dataset.id] || 0) * 12);
+    [...m.children].forEach((pill, i) => pill.classList.toggle("on", i < lit));
+  });
+}
+
+let lastSize = "";
+function postSize() {
+  requestAnimationFrame(() => {
+    const r = $app.getBoundingClientRect();
+    const s = Math.ceil(r.width) + "x" + Math.ceil(r.height);
+    if (s !== lastSize) { lastSize = s; send({ type: "size", w: Math.ceil(r.width), h: Math.ceil(r.height) }); }
+  });
+}
+
+$app.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-act]");
+  if (!t) return;
+  const act = t.dataset.act;
+  if (act === "close") { send({ type: "close" }); }
+  else if (act === "mute") { send({ type: "mute", id: t.dataset.id, m: t.dataset.m === "1" }); }
+  else if (act === "toggle") { expanded = expanded === +t.dataset.sec ? 0 : +t.dataset.sec; render(); }
+  else if (act === "select") { send({ type: "select", id: t.dataset.id }); expanded = 0; render(); }
+  else if (act === "test") { testing = state.pads.find((p) => p.key === t.dataset.key); if (testing) { view = "tester"; lastStamp = 0; lastChange = 0; axisRest = {}; axisSeen = new Set(); render(); } }
+  else if (act === "back") { view = "panel"; testing = null; render(); }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (view === "tester") { view = "panel"; testing = null; render(); }
+  else send({ type: "close" });
+});
+
+if (host) host.addEventListener("message", (e) => {
+  const m = e.data;
+  if (m.type === "state") { if (dragging) pendingState = m; else { state = m; render(); } }
+  else if (m.type === "levels") { levels = m.levels || {}; updateMeters(); }
+  else if (m.type === "show") { view = "panel"; expanded = 0; testing = null; render(); }
+});
+
+render();
+raf = requestAnimationFrame(loop);
+send({ type: "ready" });
