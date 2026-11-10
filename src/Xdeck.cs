@@ -22,11 +22,52 @@ using System.Web.Script.Serialization;
 using Microsoft.Web.WebView2.Core;
 
 // Portable layout: everything Xdeck writes lives in Data\ next to the exe.
+// Data: portable mode when a Data folder sits next to the exe (the zip ships one); otherwise —
+// e.g. installed for all users in Program Files — each Windows user gets %LOCALAPPDATA%\Xdeck.
 static class AppPaths
 {
     public static string Exe { get { return Path.GetDirectoryName(Application.ExecutablePath); } }
-    public static string Data { get { string d = Path.Combine(Exe, "Data"); Directory.CreateDirectory(d); return d; } }
+    public static bool Portable { get { return Directory.Exists(Path.Combine(Exe, "Data")); } }
+    public static string Data
+    {
+        get
+        {
+            string d = Portable ? Path.Combine(Exe, "Data")
+                                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Xdeck");
+            Directory.CreateDirectory(d);
+            return d;
+        }
+    }
     public static string DeviceOrder { get { return Path.Combine(Data, "devices.txt"); } }
+}
+
+// Windows 11 hides new tray icons under the ^ arrow. Promote Xdeck's icon to the taskbar once per
+// user (Explorer creates the NotifyIconSettings entry a moment after the icon first appears); a
+// flag in Data remembers it, so if the user hides the icon later that choice is kept.
+static class TrayPromote
+{
+    public static void Once()
+    {
+        string flag = Path.Combine(AppPaths.Data, "tray-promoted");
+        if (File.Exists(flag)) return;
+        try
+        {
+            using (RegistryKey root = Registry.CurrentUser.OpenSubKey(@"Control Panel\NotifyIconSettings", true))
+            {
+                if (root == null) return;
+                string exe = Path.GetFileName(Application.ExecutablePath).ToLowerInvariant();
+                foreach (string sub in root.GetSubKeyNames())
+                    using (RegistryKey k = root.OpenSubKey(sub, true))
+                    {
+                        string path = k == null ? null : k.GetValue("ExecutablePath") as string;
+                        if (path == null || !path.ToLowerInvariant().EndsWith("\\" + exe)) continue;
+                        k.SetValue("IsPromoted", 1, RegistryValueKind.DWord);
+                        File.WriteAllText(flag, DateTime.Now.ToString("o"));
+                    }
+            }
+        }
+        catch { }
+    }
 }
 
 // ---------------------------------------------------------------- audio endpoints
@@ -1427,12 +1468,20 @@ class XdeckApp : Form
         menu.Items.Add(new ToolStripSeparator());
         ToolStripMenuItem autostart = new ToolStripMenuItem("Start with Windows");
         autostart.Checked = Autostart.IsOn();
-        autostart.Click += delegate { Autostart.Set(!Autostart.IsOn()); autostart.Checked = Autostart.IsOn(); };
+        if (Autostart.ForAllUsers()) { autostart.Text = "Start with Windows (all users)"; autostart.Enabled = false; }
+        else autostart.Click += delegate { Autostart.Set(!Autostart.IsOn()); autostart.Checked = Autostart.IsOn(); };
         menu.Items.Add(autostart);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit Xdeck", null, delegate { tray.Visible = false; Application.Exit(); });
         tray.ContextMenuStrip = menu;
         panel.Prewarm();
+
+        // keep the gear on the taskbar instead of under the ^ arrow (first run per user)
+        System.Windows.Forms.Timer promote = new System.Windows.Forms.Timer();
+        int promoteTries = 0;
+        promote.Interval = 2500;
+        promote.Tick += delegate { TrayPromote.Once(); if (++promoteTries >= 6) promote.Stop(); };
+        promote.Start();
 
         // Controller combo -> audio switch, on the UI thread.
         Combo.Fire = delegate (int dir)
@@ -1599,12 +1648,17 @@ class XdeckApp : Form
     }
 }
 
-// "Start with Windows": a shortcut to this exe in the user's Startup folder (the user turns it on from the tray).
+// "Start with Windows": a shortcut to this exe in the user's Startup folder (the user turns it on from
+// the tray). An install for all users puts one in the common Startup folder instead; that one is
+// managed by install.ps1, so the tray item just shows it as on.
 static class Autostart
 {
-    static string Link { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), Path.GetFileNameWithoutExtension(Application.ExecutablePath) + ".lnk"); } }
+    static string Name { get { return Path.GetFileNameWithoutExtension(Application.ExecutablePath) + ".lnk"; } }
+    static string Link { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), Name); } }
+    static string CommonLink { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup), Name); } }
 
-    public static bool IsOn() { return File.Exists(Link); }
+    public static bool ForAllUsers() { return File.Exists(CommonLink); }
+    public static bool IsOn() { return File.Exists(Link) || ForAllUsers(); }
 
     public static void Set(bool on)
     {

@@ -8,12 +8,21 @@ from the panel, a hotkey, or the controller in your hands.
 
 Made by **[Skale Club](https://skale.club)**.
 
-## Run it
+## Install
 
-Double-click `Xdeck.exe`. No installer. It needs Windows 10/11 64-bit with the Microsoft Edge
-WebView2 Runtime (built into Windows 11) and .NET Framework 4.8 (built into Windows 10 1903+).
-Everything Xdeck writes lives in `Data\` next to the exe, so the folder can move between PCs.
-Opening it a second time does nothing; the first copy keeps running.
+It needs Windows 10/11 64-bit with the Microsoft Edge WebView2 Runtime (built into Windows 11) and
+.NET Framework 4.8 (built into Windows 10 1903+). Unzip the release, then either:
+
+| How | What happens |
+|---|---|
+| **For every user of the PC** — right-click `install.ps1` › *Run with PowerShell* (approve the admin prompt) | Installs to `C:\Program Files\Xdeck`, adds it to everyone's Start menu and starts it with Windows for everyone. |
+| **Only for you** — `install.ps1 -CurrentUser` | Installs to `%LOCALAPPDATA%\Programs\Xdeck`, your Start menu and your startup. No admin. |
+| **Portable** — double-click `Xdeck.exe` in the unzipped folder | Runs from there; its settings stay in the `Data\` folder beside it. |
+
+`install.ps1 -Uninstall` (add `-CurrentUser` for a per-user install) removes it. An installed Xdeck
+keeps each user's settings in `%LOCALAPPDATA%\Xdeck`. On first run the gear is pinned to the taskbar
+instead of hiding under the ^ arrow. Opening Xdeck a second time does nothing; the first copy keeps
+running (one per signed-in user).
 
 Xdeck lives in the system tray as a gear:
 
@@ -43,9 +52,10 @@ button by button; the G29 shows the wheel angle and pedals; the handbrake shows 
 ## Build
 
 ```powershell
-.\build.ps1            # build\Xdeck, the portable folder
-.\build.ps1 -Zip       # + dist\Xdeck-<version>.zip
-.\build.ps1 -Install   # + copy to %LOCALAPPDATA%\Programs\Xdeck and restart it (keeps Data)
+.\build.ps1                     # build\Xdeck
+.\build.ps1 -Zip                # + dist\Xdeck-<version>.zip (portable, with install.ps1)
+.\build.ps1 -Install            # + install for the current user
+.\build.ps1 -Install -AllUsers  # + install for every user (admin prompt)
 ```
 
 C# 5 on the .NET Framework 4.8 compiler that ships with Windows (no SDK needed). `src\Xdeck.cs` is
@@ -61,8 +71,10 @@ Seu áudio e seus controles, pelo tray. Troque a saída de som e o microfone, aj
 a bateria de cada controle e teste controles, volante e freio de mão — pelo painel, por atalho ou
 pelo próprio controle.
 
-- **Rodar:** dois cliques em `Xdeck.exe`, sem instalador. Tudo que ele grava fica em `Data\`, ao
-  lado do exe. Botão direito na engrenagem › **Start with Windows** para abrir com o Windows.
+- **Instalar para todos os usuários do PC:** botão direito em `install.ps1` › *Executar com o
+  PowerShell* e aprove o pedido de administrador. Vai para `C:\Program Files\Xdeck`, entra no Menu
+  Iniciar e abre com o Windows para todo mundo. Só para você: `install.ps1 -CurrentUser`.
+  Portátil: dois cliques em `Xdeck.exe` na pasta descompactada.
 - **Painel:** clique esquerdo na engrenagem. Fica aberto até você fechar.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).

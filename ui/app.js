@@ -329,8 +329,7 @@ function loop() {
   if (pedals) {
     const first = wheel ? 1 : 0;
     for (let i = first; i < gp.axes.length; i++) {
-      if (!(i in axisRest)) axisRest[i] = gp.axes[i];
-      if (Math.abs(gp.axes[i]) > 0.001 || Math.abs(gp.axes[i] - axisRest[i]) > 0.05) axisSeen.add(i);
+      if (Math.abs(gp.axes[i]) > 0.001) axisSeen.add(i);
     }
     const shown = [...axisSeen].sort((a, b) => a - b);
     const key = shown.join(",");
@@ -339,8 +338,8 @@ function loop() {
       pedals.innerHTML = shown.map((i) => `<div data-axis="${i}"><div class="bar"><b></b></div><div class="bar-label">${testing.kind === "handbrake" && shown.length === 1 ? "Handbrake" : "Axis " + (i + 1)}</div><div class="bar-label pct">0%</div></div>`).join("");
     }
     pedals.querySelectorAll("[data-axis]").forEach((el) => {
-      const i = +el.dataset.axis, v = gp.axes[i] || 0, rest = axisRest[i];
-      const span = Math.abs(rest) > 0.5 ? 2 : 1;          // rest at an end: full travel is 2
+      const i = +el.dataset.axis, v = gp.axes[i] || 0, rest = restEnd(i, v, 0);
+      const span = rest ? 2 : 1;                           // rest at an end: full travel is 2
       const f = Math.max(0, Math.min(1, Math.abs(v - rest) / span));
       el.querySelector("b").style.height = f * 100 + "%";
       el.querySelector(".pct").textContent = Math.round(f * 100) + "%";
@@ -438,6 +437,12 @@ function g29Html() {
   </div>`;
 }
 
+// The resting end (+1 or -1) of a pedal/lever axis, learnt from the first reading at an end.
+function restEnd(axis, v, fallback) {
+  if (!(axis in axisRest) && Math.abs(v) > 0.9) axisRest[axis] = v > 0 ? 1 : -1;
+  return axis in axisRest ? axisRest[axis] : fallback;
+}
+
 function updateG29(gp, pressed) {
   const deg = (gp.axes[0] || 0) * 450;                       // 900° lock to lock
   const w = document.getElementById("g29-wheel");
@@ -456,12 +461,11 @@ function updateG29(gp, pressed) {
     if ([5, 6, 7].includes(dir)) on.add("g-left");
   }
   document.querySelectorAll(".g29 [id^='g-']").forEach((el) => el.classList.toggle("on", on.has(el.id)));
-  // Pedals fill from wherever they rest (some setups report +1 released, others 0).
+  // Pedals: released is an end of the axis (+1 on the G29). The first readings can be 0 before the
+  // device reports, so the resting end is learnt from the first reading that is at an end.
   G29_PEDALS.forEach(([, axis], i) => {
     const v = gp.axes[axis];
-    if (v !== undefined && !(axis in axisRest)) axisRest[axis] = v;
-    const rest = axisRest[axis], span = Math.abs(rest) > 0.5 ? 2 : 1;
-    const f = v === undefined ? 0 : Math.max(0, Math.min(1, Math.abs(v - rest) / span));
+    const f = v === undefined ? 0 : Math.max(0, Math.min(1, Math.abs(v - restEnd(axis, v, 1)) / 2));
     const fill = document.getElementById("pedal" + i);
     fill.setAttribute("y", 120 - f * 120);
     fill.setAttribute("height", f * 120);
