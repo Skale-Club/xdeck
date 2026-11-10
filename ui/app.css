@@ -25,8 +25,10 @@ body { font: 13px/1.3 "Segoe UI Variable Text", "Segoe UI", sans-serif; user-sel
 .tester { width: 600px; }
 .tester.k-handbrake { width: 420px; }
 .tester.k-handbrake .stage { height: 330px; }
-.tester.k-g29 { width: 640px; }
+.tester.k-g29 { width: 660px; }
 header { display: flex; align-items: center; gap: 8px; height: 34px; margin: 0 2px 6px 6px; }
+header .mark { width: 22px; height: 22px; color: var(--accent); display: grid; place-items: center; flex: none; }
+header .mark svg { width: 22px; height: 22px; }
 header h1 { font: 600 18px "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon-btn { width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; }
 .icon-btn svg { width: 14px; height: 14px; }
@@ -169,8 +171,44 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 
 /* wheel / handbrake / generic */
 .rig { display: flex; gap: 28px; align-items: center; justify-content: center; width: 100%; height: 100%; }
-.wheel { width: 230px; height: 230px; transition: transform .03s linear; }
-.wheel circle, .wheel path { stroke: #8a8a94; }
+/* G29 */
+.g29 { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; }
+.g29-wheel { width: 430px; height: 355px; flex: none; }
+.g29-scale line { stroke: #1d8fd8; stroke-width: 2.2; stroke-linecap: round; opacity: .85; }
+.g29-range { fill: #1d8fd8; font: 600 11px "Segoe UI", sans-serif; letter-spacing: .08em; text-anchor: middle; }
+.g29-pointer { fill: #f5f5f7; }
+.g29-rim { fill: none; stroke: #121214; stroke-width: 30; }
+.g29-stitch { fill: none; stroke: #2c2c31; stroke-width: 1.2; stroke-dasharray: 2 4; }
+.g29-marker { fill: #1d8fd8; }
+.g29-spokes { fill: url(#spoke); stroke: #2a2a2e; stroke-width: 1.5; }
+.g29-brush { fill: none; stroke: #d6d6dc; stroke-width: 1.2; opacity: .5; }
+.g29-console { fill: #141416; stroke: #2e2e33; stroke-width: 1.5; }
+.g-paddle { fill: #a7a7ae; stroke: #3a3a40; stroke-width: 1.5; }
+.g-arm { fill: #34343a; }
+.g-btn circle:first-child { fill: #34343a; }
+.g-sym { fill: none; stroke: #c9c9d0; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.g-blue { fill: #1d4f7c; }
+.g-small { fill: #3a3a40; }
+.g-rocker rect { fill: #34343a; }
+.g-dial { fill: url(#dial); stroke: #6d1a16; stroke-width: 2; }
+.g-enter circle { fill: #1f1f22; }
+.g-hub { fill: #111113; stroke: #3c3c42; stroke-width: 3; }
+.g-screw { fill: #2e2e33; }
+.g-pslogo { filter: invert(1); opacity: .9; }
+.g29 .on, .g29 .on circle, .g29 .on rect { fill: var(--accent) !important; }
+.g29 .on .g-sym { stroke: #fff; }
+.g29-pointer, .g29-wheel #g29-wheel { transition: transform .03s linear; }
+#g-ps.on { fill: #111113 !important; stroke: var(--accent); stroke-width: 5; }
+.g29-side { display: flex; flex-direction: column; align-items: center; gap: 18px; flex: 1; }
+.g29-angle { display: flex; flex-direction: column; align-items: center; }
+.g29-angle b { font: 600 30px "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+.g29-angle span { color: var(--dim); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
+.g29-pedals { width: 176px; height: 172px; }
+.pedal-shell { fill: #2a2a2e; stroke: #44444b; stroke-width: 1.5; }
+.pedal-fill { fill: var(--accent); }
+.pedal-groove { stroke: #121214; stroke-width: 3; stroke-linecap: round; opacity: .6; }
+.pedal-name { fill: var(--dim); font: 600 11px "Segoe UI", sans-serif; text-anchor: middle; }
+.pedal-pct { fill: var(--text); font: 600 12px "Segoe UI", sans-serif; text-anchor: middle; }
 .bars { display: flex; gap: 14px; align-items: flex-end; height: 200px; }
 .bar { width: 26px; height: 180px; border-radius: 13px; background: var(--off); position: relative; overflow: hidden; }
 .bar b { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); height: 0; }

@@ -32,6 +32,18 @@ const I = {
   back: '<svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
+// The app mark: the same 8-tooth gear the tray icon draws (src/Xdeck.cs, Gear()).
+I.gear = (() => {
+  const c = 16, rOut = 15, rIn = 15 * 0.74, teeth = 8, half = Math.PI / teeth, pts = [];
+  const at = (a, r) => (c + Math.cos(a) * r).toFixed(2) + "," + (c + Math.sin(a) * r).toFixed(2);
+  for (let i = 0; i < teeth; i++) {
+    const a = (i * 2 * Math.PI) / teeth;
+    pts.push(at(a - half * 0.55, rIn), at(a - half * 0.38, rOut), at(a + half * 0.38, rOut), at(a + half * 0.55, rIn), at(a + half, rIn * 0.98));
+  }
+  const h = 15 * 0.34;
+  return `<svg viewBox="0 0 32 32"><path fill="currentColor" fill-rule="evenodd" d="M${pts.join("L")}Z M${c - h},${c} a${h},${h} 0 1 0 ${2 * h},0 a${h},${h} 0 1 0 ${-2 * h},0Z"/></svg>`;
+})();
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function audioKind(name) {
@@ -144,7 +156,7 @@ function batteryHtml(p) {
 }
 
 function panelHtml() {
-  let h = `<div class="view panel"><header><h1>Xdeck</h1><button class="icon-btn close" data-act="close" title="Close">${I.close}</button></header>`;
+  let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" title="Close">${I.close}</button></header>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
   h += `<h2>Controllers</h2>`;
@@ -195,13 +207,7 @@ function stageHtml(p) {
     case "switchpro": return `<div class="art sil" data-svg="pads/pro.svg"></div>`;
     case "joycon": return `<div class="art sil" data-svg="pads/joycon.svg"></div>`;
     case "g29":
-      return `<div class="rig"><div><svg class="wheel" id="wheel" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="44" fill="none" stroke-width="7"/><circle cx="50" cy="50" r="13" fill="#3a3a3e" stroke-width="3"/>
-          <path d="M8 46h29M63 46h29M50 63v30" stroke-width="7" stroke-linecap="round"/>
-          <path d="M50 6v8" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" style="stroke:var(--accent)"/></svg>
-          <div class="deg" id="deg">0°</div></div>
-        <div><div class="bars" id="pedals"></div></div>
-        <div class="btn-grid" id="btns"></div></div>`;
+      return g29Html();
     case "handbrake":
       return `<div class="rig">
         <svg class="hb" viewBox="-40 -10 300 290">
@@ -315,12 +321,8 @@ function loop() {
   }
 
   // wheel, pedals, handbrake, generic
-  const wheel = document.getElementById("wheel");
-  if (wheel) {
-    const deg = (gp.axes[0] || 0) * 450;            // G29: 900 degrees lock to lock
-    wheel.style.transform = `rotate(${deg}deg)`;
-    document.getElementById("deg").textContent = Math.round(deg) + "°";
-  }
+  if (testing.kind === "g29") updateG29(gp, pressed);
+  const wheel = null;
   // Pedals / levers: only axes that are actually wired (unused ones sit at exactly 0).
   // Each bar fills from its own resting value, so +1-at-rest and -1-at-rest both read 0%.
   const pedals = document.getElementById("pedals") || document.getElementById("axes");
@@ -351,6 +353,120 @@ function loop() {
     if (grid.childElementCount !== gp.buttons.length) grid.innerHTML = gp.buttons.map((_, i) => `<i>${i + 1}</i>`).join("");
     [...grid.children].forEach((el, i) => el.classList.toggle("on", pressed(i)));
   }
+}
+
+// ------------------------------------------------------------ G29 racing wheel
+// Drawn in the spirit of the real wheel (black rim, blue top marker, silver spokes, PlayStation
+// buttons, red dial, paddles) with the 900° range gauge on top. The wheel group turns with the
+// real wheel; buttons light up; the three pedals fill as they are pressed.
+// Chromium's G29 layout: axis 0 wheel, 1 throttle, 2 brake, 5 clutch (all +1 released), 9 hat.
+const G29_BTN = { 0: "g-cross", 1: "g-square", 2: "g-circle", 3: "g-triangle", 4: "g-paddle-r", 5: "g-paddle-l",
+  6: "g-r2", 7: "g-l2", 8: "g-share", 9: "g-options", 10: "g-r3", 11: "g-l3", 19: "g-plus", 20: "g-minus",
+  21: "g-dial", 22: "g-dial", 23: "g-enter", 24: "g-ps" };
+const G29_PEDALS = [["Clutch", 5], ["Brake", 2], ["Throttle", 1]];
+
+function g29Html() {
+  const cx = 230, cy = 262, R = 206;
+  let ticks = "";
+  for (let i = -30; i <= 30; i++) {                         // the 900° scale: one tick per 15°
+    const a = (i * 2 * Math.PI) / 180 - Math.PI / 2, long = i % 5 === 0;
+    const r1 = R - (long ? 16 : 10);
+    ticks += `<line x1="${(cx + Math.cos(a) * r1).toFixed(1)}" y1="${(cy + Math.sin(a) * r1).toFixed(1)}" x2="${(cx + Math.cos(a) * R).toFixed(1)}" y2="${(cy + Math.sin(a) * R).toFixed(1)}"/>`;
+  }
+  const btn = (id, x, y, sym) => `<g id="${id}" class="g-btn"><circle cx="${x}" cy="${y}" r="9"/>${sym}</g>`;
+  const pedals = G29_PEDALS.map(([name], i) => `
+      <g transform="translate(${i * 62},0)">
+        <rect class="pedal-shell" x="0" y="0" width="44" height="120" rx="10"/>
+        <clipPath id="pclip${i}"><rect x="0" y="0" width="44" height="120" rx="10"/></clipPath>
+        <rect class="pedal-fill" id="pedal${i}" x="0" y="120" width="44" height="0" clip-path="url(#pclip${i})"/>
+        ${[24, 44, 64, 84, 104].map((y) => `<line class="pedal-groove" x1="9" y1="${y}" x2="35" y2="${y}"/>`).join("")}
+        <text class="pedal-name" x="22" y="140">${name}</text>
+        <text class="pedal-pct" id="pedalpct${i}" x="22" y="158">0%</text>
+      </g>`).join("");
+  return `<div class="g29">
+    <svg class="g29-wheel" viewBox="0 30 460 380">
+      <defs>
+        <linearGradient id="spoke" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9b9c0"/><stop offset=".55" stop-color="#7d7d85"/><stop offset="1" stop-color="#55555c"/></linearGradient>
+        <radialGradient id="dial" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#ff6b5f"/><stop offset="1" stop-color="#b32a24"/></radialGradient>
+      </defs>
+      <g class="g29-scale">${ticks}</g>
+      <text class="g29-range" x="${cx}" y="${cy - R + 46}">900° OPERATING RANGE</text>
+      <path id="g29-pointer" class="g29-pointer" d="M${cx - 7},${cy - R - 16} h14 l-7,10z"/>
+      <g id="g29-wheel">
+        <path id="g-paddle-l" class="g-paddle" d="M126,218 q-20,30 -10,64 l18,-4 q-6,-28 8,-54z"/>
+        <path id="g-paddle-r" class="g-paddle" d="M334,218 q20,30 10,64 l-18,-4 q6,-28 -8,-54z"/>
+        <!-- silver frame: side wings to the rim, two legs and a centre spoke down to it (ends hide under the rim) -->
+        <path class="g29-spokes" d="M98,242 Q138,204 186,198 L274,198 Q322,204 362,242 L362,282 Q344,300 322,306 L300,352 L290,376 L262,376 L256,340 L204,340 L198,376 L170,376 L160,352 L138,306 Q116,300 98,282 Z"/>
+        <path class="g29-brush" d="M104,248 Q140,214 186,208 M274,208 Q320,214 356,248"/>
+        <circle class="g29-rim" cx="${cx}" cy="${cy}" r="124"/>
+        <circle class="g29-stitch" cx="${cx}" cy="${cy}" r="110"/>
+        <rect class="g29-marker" x="${cx - 7}" y="${cy - 141}" width="14" height="32" rx="2"/>
+        <!-- black parts on the silver: the hub console and recessed panels for each button cluster -->
+        <path class="g29-console" d="M196,220 L264,220 Q284,222 288,244 L292,288 L276,312 L184,312 L168,288 L172,244 Q176,222 196,220 Z"/>
+        <rect class="g29-console" x="138" y="226" width="44" height="70" rx="11"/>
+        <rect class="g29-console" x="278" y="226" width="44" height="70" rx="11"/>
+        <rect class="g29-console" x="172" y="288" width="32" height="50" rx="10"/>
+        <circle class="g29-console" cx="272" cy="316" r="22"/>
+        <g id="g-dpad">
+          <path id="g-up" class="g-arm" d="M154,233 h12 v12 h-12z"/><path id="g-down" class="g-arm" d="M154,257 h12 v12 h-12z"/>
+          <path id="g-left" class="g-arm" d="M142,245 h12 v12 h-12z"/><path id="g-right" class="g-arm" d="M166,245 h12 v12 h-12z"/>
+          <rect class="g-arm" x="154" y="245" width="12" height="12"/>
+        </g>
+        <rect id="g-l3" class="g-blue" x="176" y="270" width="16" height="10" rx="3"/>
+        <rect id="g-l2" class="g-blue" x="151" y="278" width="18" height="10" rx="3"/>
+        <rect id="g-r3" class="g-blue" x="268" y="270" width="16" height="10" rx="3"/>
+        <rect id="g-r2" class="g-blue" x="291" y="278" width="18" height="10" rx="3"/>
+        <rect id="g-share" class="g-small" x="194" y="228" width="16" height="8" rx="4"/>
+        <rect id="g-options" class="g-small" x="250" y="228" width="16" height="8" rx="4"/>
+        ${btn("g-triangle", 300, 236, `<path class="g-sym" d="M300,231.5 l4.5,8 h-9z"/>`)}
+        ${btn("g-circle", 314, 250, `<circle class="g-sym" cx="314" cy="250" r="4.2"/>`)}
+        ${btn("g-square", 286, 250, `<rect class="g-sym" x="282" y="246" width="8" height="8"/>`)}
+        ${btn("g-cross", 300, 264, `<path class="g-sym" d="M296,260 l8,8 m0,-8 l-8,8"/>`)}
+        <g id="g-plus" class="g-rocker"><rect x="178" y="294" width="20" height="18" rx="6"/><path class="g-sym" d="M188,298 v10 m-5,-5 h10"/></g>
+        <g id="g-minus" class="g-rocker"><rect x="178" y="314" width="20" height="18" rx="6"/><path class="g-sym" d="M183,323 h10"/></g>
+        <circle id="g-dial" class="g-dial" cx="272" cy="316" r="17"/>
+        <g id="g-enter" class="g-enter"><circle cx="272" cy="316" r="9"/><path class="g-sym" d="M276,312 v5 h-8 m3,-3 l-3,3 l3,3"/></g>
+        <circle id="g-ps" class="g-hub" cx="${cx}" cy="${cy}" r="40"/>
+        ${[0, 1, 2, 3, 4, 5, 6, 7].map((k) => { const a = (k * Math.PI) / 4 + Math.PI / 8; return `<circle class="g-screw" cx="${(cx + Math.cos(a) * 32).toFixed(1)}" cy="${(cy + Math.sin(a) * 32).toFixed(1)}" r="3.5"/>`; }).join("")}
+        <image href="brands/playstation.svg" x="${cx - 15}" y="${cy - 15}" width="30" height="30" class="g-pslogo"/>
+      </g>
+    </svg>
+    <div class="g29-side">
+      <div class="g29-angle"><b id="g29-deg">0°</b><span>wheel angle</span></div>
+      <svg class="g29-pedals" viewBox="-4 -4 176 172">${pedals}</svg>
+    </div>
+  </div>`;
+}
+
+function updateG29(gp, pressed) {
+  const deg = (gp.axes[0] || 0) * 450;                       // 900° lock to lock
+  const w = document.getElementById("g29-wheel");
+  if (!w) return;
+  w.setAttribute("transform", `rotate(${deg.toFixed(1)} 230 262)`);
+  document.getElementById("g29-pointer").setAttribute("transform", `rotate(${(deg / 450 * 60).toFixed(1)} 230 262)`);
+  document.getElementById("g29-deg").textContent = Math.round(deg) + "°";
+  const on = new Set();
+  for (const [i, id] of Object.entries(G29_BTN)) if (pressed(+i)) on.add(id);
+  const hat = gp.axes[9];                                   // -1 up … 1 up-left; released reads ~1.29 or 0
+  if (hat !== undefined && hat <= 1.01 && Math.abs(hat) > 0.05) {
+    const dir = Math.round((hat + 1) * 3.5) % 8;            // 0 up, 1 up-right, 2 right … 7 up-left
+    if ([7, 0, 1].includes(dir)) on.add("g-up");
+    if ([1, 2, 3].includes(dir)) on.add("g-right");
+    if ([3, 4, 5].includes(dir)) on.add("g-down");
+    if ([5, 6, 7].includes(dir)) on.add("g-left");
+  }
+  document.querySelectorAll(".g29 [id^='g-']").forEach((el) => el.classList.toggle("on", on.has(el.id)));
+  // Pedals fill from wherever they rest (some setups report +1 released, others 0).
+  G29_PEDALS.forEach(([, axis], i) => {
+    const v = gp.axes[axis];
+    if (v !== undefined && !(axis in axisRest)) axisRest[axis] = v;
+    const rest = axisRest[axis], span = Math.abs(rest) > 0.5 ? 2 : 1;
+    const f = v === undefined ? 0 : Math.max(0, Math.min(1, Math.abs(v - rest) / span));
+    const fill = document.getElementById("pedal" + i);
+    fill.setAttribute("y", 120 - f * 120);
+    fill.setAttribute("height", f * 120);
+    document.getElementById("pedalpct" + i).textContent = Math.round(f * 100) + "%";
+  });
 }
 
 // ------------------------------------------------------------ render + events
@@ -412,6 +528,15 @@ if (host) host.addEventListener("message", (e) => {
   else if (m.type === "levels") { levels = m.levels || {}; updateMeters(); }
   else if (m.type === "show") { view = "panel"; expanded = 0; testing = null; render(); }
 });
+
+// Design preview without the app: index.html#preview=g29 (or xbox, dualsense, …) opens that tester.
+const preview = /^#preview=(\w+)/.exec(location.hash);
+if (preview) {
+  const kind = preview[1];
+  state.pads = [{ key: "preview", kind, name: { g29: "G29 Racing Wheel", handbrake: "Handbrake" }[kind] || kind, index: 0, battery: 64, charging: false, conn: kind === "g29" || kind === "handbrake" ? "USB" : "Bluetooth" }];
+  testing = state.pads[0];
+  view = "tester";
+}
 
 render();
 raf = requestAnimationFrame(loop);
