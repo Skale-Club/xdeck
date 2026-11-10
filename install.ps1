@@ -48,6 +48,13 @@ if ($Uninstall) {
 }
 
 if (-not (Test-Path (Join-Path $src 'Xdeck.exe'))) { throw "Xdeck.exe not found next to install.ps1 ($src)" }
+
+# An all-users install replaces this user's own copy, so it does not start twice.
+if (-not $CurrentUser) {
+    $own = Join-Path $env:LOCALAPPDATA 'Programs\Xdeck'
+    if ((Test-Path $own) -and ($own -ne $src)) { Remove-Item $own -Recurse -Force -ErrorAction SilentlyContinue }
+    Remove-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'Xdeck.lnk'), (Join-Path ([Environment]::GetFolderPath('Startup')) 'Xdeck.lnk') -ErrorAction SilentlyContinue
+}
 New-Item -ItemType Directory $target -Force | Out-Null
 Get-ChildItem $target -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 # copy the app, but not a portable Data folder: installed copies keep data per user
