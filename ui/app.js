@@ -217,40 +217,22 @@ function panelHtml() {
 }
 
 // ------------------------------------------------------------ phone remote
-// Always on (the Xdeck Remote app at xdeck.skale.club is the remote): how it is connected,
-// "Pair a phone" (a 6-digit code the phone types in the app, with how long it is still good) and
-// the paired phones, each removable.
+// The Xdeck Remote app (xdeck.skale.club) is the remote; pairing and removing phones live in the
+// tray menu. The panel only shows the 6-digit code while one is good.
 let codeDeadline = 0, codeTimer = 0;
+// Nothing in the panel, except while a pairing code (tray menu › Pair a phone…) is on show.
 function remoteHtml() {
   const r = state.remote;
-  if (!r) return "";
-  const online = (r.phones || []).filter((p) => p.online).length;
-  const sub = !r.online ? (r.error ? "Can't connect · " + esc(r.error) : "Connecting…") :
-    online ? `${online} phone${online > 1 ? "s" : ""} connected` : (r.phones || []).length ? "Open the Xdeck app on your phone" : "Use your phone as touchpad and keyboard";
-  const pairBtn = r.online && !r.code ? `<button class="upd-btn" data-act="remote-code" data-nav="remote-code">Pair a phone</button>` : "";
-  let h = `<h2>Phone remote</h2>
-    <div class="card upd">
-      <span class="disc">${I.phone}</span>
-      <span class="who"><div class="nm">Phone remote</div><div class="sub">${sub}</div></span>
-      ${pairBtn}</div>`;
-  if (r.code) {
-    const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
-    h += `<div class="remote-pair">
-        <div class="remote-code">${esc(r.code.slice(0, 3))} ${esc(r.code.slice(3))}</div>
-        <div class="remote-txt">
-          <div>On the phone, open <b>xdeck.skale.club</b> (install it as an app) and type this code.</div>
-          <div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div>
-          <button class="upd-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel</button>
-        </div></div>`;
-  }
-  if ((r.phones || []).length) {
-    h += `<div class="phone-list">`;
-    for (const p of r.phones)
-      h += `<div class="phone-row"><span class="pdot${p.online ? " on" : ""}"></span><span class="pnm">${esc(p.name)}</span>
-              <button class="link-btn" data-act="remote-unpair" data-id="${esc(p.id)}" data-nav="unpair-${esc(p.id)}">Remove</button></div>`;
-    h += `</div>`;
-  }
-  return h;
+  if (!r || !r.code) return "";
+  const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
+  return `<h2>Pair a phone</h2>
+    <div class="remote-pair">
+      <div class="remote-code">${esc(r.code.slice(0, 3))} ${esc(r.code.slice(3))}</div>
+      <div class="remote-txt">
+        <div>On the phone, open <b>xdeck.skale.club</b> (install it as an app) and type this code.</div>
+        <div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div>
+        <button class="upd-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel</button>
+      </div></div>`;
 }
 
 // the pairing code's countdown, without redrawing the panel

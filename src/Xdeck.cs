@@ -2372,6 +2372,7 @@ static class Remote
     public static DateTime CodeUntil;
     public static Action<Action> OnUi;          // set by the app: runs on the UI thread (audio)
     public static Action Changed;               // set by the app: on / online / code / phones changed
+    public static Action<string> Paired;        // set by the app: a phone (its name) just paired
 
     public class Phone
     {
@@ -2581,6 +2582,8 @@ static class Remote
             Code = null;
             Save();
             Notify();
+            Action<string> paired = Paired;
+            if (paired != null) paired(p.Name);
         }
         else if (t == "online")
         {
@@ -3948,6 +3951,11 @@ class XdeckApp : Form
         else autostart.Click += delegate { Autostart.Set(!Autostart.IsOn()); autostart.Checked = Autostart.IsOn(); };
         menu.Items.Add(autostart);
         menu.Items.Add("Edit shortcuts…", null, delegate { EditShortcuts(); });
+        // Phone remote: pair a phone (the panel shows the code), and the paired phones (click = remove)
+        ToolStripMenuItem phoneMenu = new ToolStripMenuItem("Phone remote");
+        phoneMenu.DropDownItems.Add("dummy");   // filled when it opens
+        phoneMenu.DropDownOpening += delegate { FillPhoneMenu(phoneMenu); };
+        menu.Items.Add(phoneMenu);
         menu.Items.Add(new ToolStripSeparator());
         updateItem = new ToolStripMenuItem("Restart to update");
         updateItem.Font = new Font(updateItem.Font, FontStyle.Bold);
@@ -4039,6 +4047,10 @@ class XdeckApp : Form
         // Phone remote (off until turned on in the panel): audio on the UI thread, the panel follows it.
         Remote.OnUi = delegate (Action a) { if (IsHandleCreated) BeginInvoke(a); else a(); };
         Remote.Changed = delegate { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.SendState(); }); };
+        Remote.Paired = delegate (string name)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { Balloon("Phone remote", name + " is paired. It controls this PC from the Xdeck app now.", false); });
+        };
         Remote.Load();
 
         // Self-update: checks in the background; "Xdeck.exe --update" installs a ready update.
@@ -4057,6 +4069,50 @@ class XdeckApp : Form
         });
         u.IsBackground = true;
         u.Start();
+    }
+
+    // ------------------------------------------------ phone remote (tray menu)
+    void FillPhoneMenu(ToolStripMenuItem m)
+    {
+        m.DropDownItems.Clear();
+        ToolStripMenuItem pair = new ToolStripMenuItem("Pair a phone…");
+        pair.Font = new Font(pair.Font, FontStyle.Bold);
+        pair.Click += delegate { PairPhone(); };
+        m.DropDownItems.Add(pair);
+        List<Remote.Phone> list = Remote.Phones;
+        if (list.Count > 0)
+        {
+            m.DropDownItems.Add(new ToolStripSeparator());
+            m.DropDownItems.Add(new ToolStripMenuItem("Paired phones (click to remove)") { Enabled = false });
+            foreach (Remote.Phone p in list)
+            {
+                Remote.Phone phone = p;
+                ToolStripMenuItem it = new ToolStripMenuItem((p.Online ? "●  " : "○  ") + p.Name);
+                it.ToolTipText = p.Online ? "Connected now" : "Not connected";
+                it.Click += delegate
+                {
+                    if (MessageBox.Show("Remove " + phone.Name + "? It will need a new code to control this PC again.",
+                            "Xdeck phone remote", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                        Remote.Unpair(phone.Id);
+                };
+                m.DropDownItems.Add(it);
+            }
+        }
+        m.DropDownItems.Add(new ToolStripSeparator());
+        m.DropDownItems.Add(new ToolStripMenuItem("Install the app on your phone: xdeck.skale.club") { Enabled = false });
+        if (!Remote.Online)
+            m.DropDownItems.Add(new ToolStripMenuItem(Remote.Error != null ? "Can't reach the relay: " + Remote.Error : "Connecting…") { Enabled = false });
+    }
+
+    void PairPhone()
+    {
+        if (!Remote.Online)
+        {
+            Balloon("Phone remote", "Xdeck can't reach xdeck.skale.club right now" + (Remote.Error != null ? ": " + Remote.Error : ".") + " Check the internet connection.", false);
+            return;
+        }
+        Remote.AskCode();      // the code shows up in the panel when the relay answers
+        panel.ShowPanel();
     }
 
     // ------------------------------------------------ updates

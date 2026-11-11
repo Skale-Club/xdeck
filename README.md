@@ -147,7 +147,8 @@ The **Xdeck Remote** app makes a phone (Android or iPhone) a remote for the PC, 
 
 1. On the phone, open **[xdeck.skale.club](https://xdeck.skale.club)** and install it: Android
    offers **Install the app**; on iPhone tap **Share › Add to Home Screen**.
-2. On the PC, click **Pair a phone** under **Phone remote** in the Xdeck panel.
+2. On the PC, right-click the Xdeck gear in the tray › **Phone remote** › **Pair a phone…**: the
+   panel shows a 6-digit code.
 3. Type the 6-digit code from the panel in the app. That is all: from then on the app connects by
    itself. Several PCs can be paired (the PC name at the top switches between them).
 
@@ -163,8 +164,8 @@ The app makes the phone:
 
 Phone and PC meet through a relay at xdeck.skale.club (a Cloudflare Worker, `remote/`), so the phone
 works on mobile data too and the PC opens no port. Everything between them is encrypted end to end
-(ECDH P-256 keys exchanged at pairing, then AES + HMAC): the relay only passes it on. The panel lists
-the paired phones (a dot when connected) with **Remove**.
+(ECDH P-256 keys exchanged at pairing, then AES + HMAC): the relay only passes it on. The same tray
+menu lists the paired phones (● connected now); click one to remove it.
 
 Deploy the relay and the app (from a normal terminal, logged in with `wrangler login`):
 
@@ -249,10 +250,10 @@ pelo próprio controle.
   **Updates** com a barra de progresso e **Restart to update**; fora isso, só a versão.
 - **Controle pelo celular (tipo Unified Remote):** no celular, abra **xdeck.skale.club** e instale o
   app (Android: **Install the app**; iPhone: **Compartilhar › Adicionar à Tela de Início**). No PC,
-  clique em **Pair a phone** em **Phone remote**, no painel; digite o código de 6 dígitos no app,
+  botão direito na engrenagem › **Phone remote** › **Pair a phone…** (o painel mostra o código); digite o código de 6 dígitos no app,
   uma vez só. Depois ele conecta sozinho, de qualquer lugar (até no 4G). O celular vira touchpad,
   teclado, teclas de mídia, troca de saída de áudio e volume, e botões do OBS. Tudo vai criptografado
-  de ponta a ponta; o painel lista os celulares pareados com **Remove**.
+  de ponta a ponta. O mesmo menu lista os celulares pareados; clique num para remover.
 - **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel como círculos embaixo dos
   controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.

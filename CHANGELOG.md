@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 — 2026-11-11
+
+- The panel has no Phone remote section any more. Pairing moved to the tray menu: right-click the
+  gear › **Phone remote** › **Pair a phone…** shows the code in the panel (only while it is good),
+  and a notification says when the phone paired. The same menu lists the paired phones (● connected
+  now); click one to remove it.
+
 ## 0.6.1 — 2026-11-11
 
 - Phone remote has no on/off switch any more: Xdeck is always ready for the Xdeck Remote app. The
