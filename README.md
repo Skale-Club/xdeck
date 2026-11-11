@@ -30,7 +30,9 @@ copy (run `Xdeck.exe` from the unzipped folder; settings stay in `Data\` beside 
 hours, downloads it in the background and checks its signature. Then a notification, the tray menu
 and the panel offer **Restart to update**; quitting Xdeck installs it too. Settings are kept.
 Installed for every user (in `C:\Program Files`), Windows asks for administrator approval once per
-update. Tray menu › **Check for updates** checks right away.
+update. The **Updates** area at the bottom of the panel shows the version and how it goes (a
+progress bar while it downloads), with **Check now** or **Restart to update**; the tray menu has
+**Check for updates** too.
 
 Uninstall from Settings › Apps (or `"Uninstall Xdeck.exe" /uninstall` in its folder). An installed
 Xdeck keeps each user's settings in `%LOCALAPPDATA%\Xdeck`, also after uninstalling. On first run the gear is pinned to the taskbar
@@ -49,7 +51,8 @@ Xdeck lives in the system tray as a gear:
 |---|---|
 | **Audio output** | See the active output and its live level. Click it to list the others and pick one. Volume slider (drag or scroll), mute. |
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
-| **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. |
+| **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. Below them, one thin line per mouse, keyboard or other wireless device, with its battery. |
+| **Updates** | The version, what the updater is doing (a progress bar while it downloads), and **Check now** / **Restart to update**. |
 
 ## Devices that connect
 
@@ -211,7 +214,10 @@ pelo próprio controle.
 - **Atualizações:** automáticas. O Xdeck procura versão nova ao abrir e a cada 6 horas, baixa
   sozinho e avisa **Restart to update** (notificação, menu do tray e painel); fechar o Xdeck também
   instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por
-  atualização. As configurações ficam.
+  atualização. As configurações ficam. No rodapé do painel, **Updates** mostra a versão, a barra de
+  progresso do download e os botões **Check now** / **Restart to update**.
+- **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel, numa linha fina cada, embaixo
+  dos controles, com a bateria.
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).

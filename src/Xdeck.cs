@@ -230,12 +230,28 @@ static class Updater
     const string Agent = "skale-x-updater";
     static readonly TimeSpan Every = TimeSpan.FromHours(6);
 
-    public enum State { Idle, Checking, UpToDate, Downloading, Ready, Failed }
+    public enum State { Idle, Checking, UpToDate, Downloading, Ready, Installing, Failed }
     public static volatile State Now = State.Idle;
     public static volatile string Version;  // the newer release being downloaded or ready
-    public static volatile string Error;    // why the last check failed
+    public static volatile string Error;    // why the last check (or install) failed
+    public static volatile int Progress = -1;   // download percent while Downloading, -1 unknown
+    public static DateTime LastCheck = DateTime.MinValue;
     public static Action Changed;           // set by the app; called from the updater thread
     static int busy;
+    static DateTime lastProgress;
+
+    static void Notify() { Action c = Changed; if (c != null) c(); }
+
+    // The panel's "Restart to update": shown as Installing until Xdeck exits, or back to Ready
+    // (or Failed) with the reason when it could not start.
+    public static void MarkInstalling() { Error = null; Now = State.Installing; Notify(); }
+
+    public static void InstallFailed(string error)
+    {
+        Error = error;
+        Now = ReadReady() != null ? State.Ready : State.Failed;
+        Notify();
+    }
 
     // This build, from the assembly version build.ps1 stamps from VERSION.
     public static string Current
@@ -278,7 +294,7 @@ static class Updater
         t.Start();
     }
 
-    static void Set(State s) { Now = s; Log("state " + s + (Version != null ? " " + Version : "")); Action c = Changed; if (c != null) c(); }
+    static void Set(State s) { Now = s; Log("state " + s + (Version != null ? " " + Version : "")); Notify(); }
 
     // Data\update.log: what the updater did and why it stopped (kept under 200 KB).
     public static void Log(string line)
@@ -309,8 +325,17 @@ static class Updater
                 if (Newer(version, Current) <= 0) { Error = null; if (!wasReady) Set(State.UpToDate); return; }
                 if (wasReady && version == Version) { Error = null; Set(State.Ready); return; }
                 Version = version;
+                Progress = 0;
                 Set(State.Downloading);
-                byte[] zip = Get(url, MaxDownload);
+                byte[] zip = Get(url, MaxDownload, delegate (long done, long total)
+                {
+                    // the panel's progress bar: a few updates a second is plenty
+                    int p = total > 0 ? (int)(done * 100 / total) : -1;
+                    if (p == Progress || (p < 100 && (DateTime.Now - lastProgress).TotalMilliseconds < 150)) return;
+                    lastProgress = DateTime.Now;
+                    Progress = p;
+                    Notify();
+                });
                 if (!Verify(zip, signature)) throw new Exception("the download does not match its signature");
                 Directory.CreateDirectory(Root);
                 foreach (string old in Directory.GetFiles(Root, "Xdeck-*.zip")) TryDelete(old);
@@ -333,10 +358,19 @@ static class Updater
                 else Set(State.Failed);
             }
         }
-        finally { Interlocked.Exchange(ref busy, 0); }
+        finally
+        {
+            LastCheck = DateTime.Now;
+            Progress = -1;
+            Interlocked.Exchange(ref busy, 0);
+            Notify();
+        }
     }
 
-    static byte[] Get(string url, long max)
+    static byte[] Get(string url, long max) { return Get(url, max, null); }
+
+    // progress(bytes so far, total or -1)
+    static byte[] Get(string url, long max, Action<long, long> progress)
     {
         Uri u = new Uri(url);
         // a test feed (XDECK_UPDATE_FEED) may also be a file or a server on this PC
@@ -351,12 +385,15 @@ static class Updater
         using (Stream s = resp.GetResponseStream())
         using (MemoryStream m = new MemoryStream())
         {
-            byte[] buf = new byte[81920];
+            long total = resp.ContentLength;
+            if (total > max) throw new Exception("the download is too large");
+            byte[] buf = new byte[32768];
             int n;
             while ((n = s.Read(buf, 0, buf.Length)) > 0)
             {
                 m.Write(buf, 0, n);
                 if (m.Length > max) throw new Exception("the download is too large");
+                if (progress != null) progress(m.Length, total);
             }
             return m.ToArray();
         }
@@ -3247,6 +3284,9 @@ class WebPanel : Form
             case "update":                                      // "Restart to update"
                 if (XdeckApp.PanelUpdate != null) XdeckApp.PanelUpdate();
                 break;
+            case "check":                                       // "Check now" / "Try again"
+                Updater.CheckNow();
+                break;
             case "mouse":                                       // the switch in a controller's page
                 try
                 {
@@ -3291,8 +3331,8 @@ class WebPanel : Form
                 { "canMouse", Gamepad(p.Kind) && Inputs.Find(p.Kind, p.Index) != null },
                 { "mouse", MouseMode.IsOn(Inputs.Find(p.Kind, p.Index)) } }; }) },
             { "mouseKey", Shortcuts.MouseText },
-            { "version", Updater.Current },
-            { "update", Updater.Now == Updater.State.Ready ? Updater.Version : null },
+            { "upd", UpdateJson() },
+            { "devices", DevicesJson() },
         });
     }
 
@@ -3300,6 +3340,37 @@ class WebPanel : Form
 
     // the controller mouse was turned on or off (from any place): refresh its switch
     public void MouseChanged() { SendState(); }
+
+    // The updates area at the bottom of the panel: this version, what the updater is doing
+    // (with the download progress), and when it last checked.
+    static Dictionary<string, object> UpdateJson()
+    {
+        DateTime last = Updater.LastCheck;
+        return new Dictionary<string, object> {
+            { "state", Updater.Now.ToString().ToLowerInvariant() },
+            { "current", Updater.Current },
+            { "version", Updater.Version },
+            { "progress", Updater.Progress },
+            { "error", Updater.Error },
+            { "checked", last == DateTime.MinValue ? 0 : (long)(last.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds },
+        };
+    }
+
+    // live, while it downloads: only the updates area changes
+    public void SendUpdate()
+    {
+        if (ready && Visible) Post(new Dictionary<string, object> { { "type", "update" }, { "u", UpdateJson() } });
+    }
+
+    // Wireless mice, keyboards, headphones and other Bluetooth devices, and USB mice and keyboards,
+    // with their battery (from the device watch, every few seconds).
+    static object DevicesJson()
+    {
+        List<Device> list = XdeckApp.PanelDevices;
+        return list.ConvertAll(delegate (Device d) { return (object)new Dictionary<string, object> {
+            { "key", d.Key }, { "name", d.Name }, { "glyph", d.Glyph }, { "conn", d.Conn },
+            { "battery", d.Battery }, { "charging", d.Charging } }; });
+    }
 
     void SendLevels()
     {
@@ -3467,9 +3538,10 @@ class XdeckApp : Form
         bool ready = st == Updater.State.Ready;
         updateItem.Visible = ready;
         updateItem.Text = "Restart to update to " + Updater.Version;
-        checkItem.Enabled = st != Updater.State.Checking && st != Updater.State.Downloading;
+        checkItem.Enabled = st != Updater.State.Checking && st != Updater.State.Downloading && st != Updater.State.Installing;
         checkItem.Text = st == Updater.State.Checking ? "Checking for updates…"
-                       : st == Updater.State.Downloading ? "Downloading " + Updater.Version + "…" : "Check for updates";
+                       : st == Updater.State.Downloading ? "Downloading " + Updater.Version + (Updater.Progress >= 0 ? " (" + Updater.Progress + "%)…" : "…")
+                       : st == Updater.State.Installing ? "Installing " + Updater.Version + "…" : "Check for updates";
         if (ready && (announced != Updater.Version || userCheck))
         {
             announced = Updater.Version;
@@ -3478,7 +3550,7 @@ class XdeckApp : Form
         }
         else if (userCheck && st == Updater.State.UpToDate) { userCheck = false; Balloon("Xdeck is up to date", "Version " + Updater.Current + ".", false); }
         else if (userCheck && st == Updater.State.Failed) { userCheck = false; Balloon("Xdeck could not check for updates", Updater.Error ?? "", false); }
-        panel.SendState();
+        panel.SendUpdate();
     }
 
     void Balloon(string title, string text, bool update)
@@ -3487,12 +3559,31 @@ class XdeckApp : Form
         tray.ShowBalloonTip(update ? 10000 : 4000, title, text.Length > 0 ? text : " ", ToolTipIcon.Info);
     }
 
+    // "Restart to update" (panel, tray, notification, Xdeck.exe --update).
     void InstallUpdate()
     {
         Updater.Log("restart to update (state " + Updater.Now + ")");
-        string error;
-        if (Updater.Install(true, out error)) { tray.Visible = false; Application.Exit(); }
-        else Balloon("Xdeck could not update", error, false);
+        Updater.State st = Updater.Now;
+        if (st == Updater.State.Installing || st == Updater.State.Downloading || st == Updater.State.Checking) return;   // the panel shows how it goes
+        if (st != Updater.State.Ready)
+        {
+            // e.g. an old "is ready" notification clicked after that version was installed
+            Balloon("Xdeck is up to date", "Version " + Updater.Current + " is installed.", false);
+            return;
+        }
+        Updater.MarkInstalling();
+        // a moment for the panel to show "Installing", then hand over to the new version
+        System.Windows.Forms.Timer go = new System.Windows.Forms.Timer();
+        go.Interval = 700;
+        go.Tick += delegate
+        {
+            go.Stop();
+            go.Dispose();
+            string error;
+            if (Updater.Install(true, out error)) { tray.Visible = false; Application.Exit(); }
+            else { Updater.InstallFailed(error); Balloon("Xdeck could not update", error, false); }
+        };
+        go.Start();
     }
 
     // Quitting installs a ready update when it needs no administrator prompt.
@@ -3662,6 +3753,7 @@ class XdeckApp : Form
     // in a small one); and an alert when a wireless device's battery gets low (again only after it
     // charged or came back up).
     const int LowBattery = 15, PadBatteryWaitMs = 5000, BatteryWaitMs = 3000, QuietReconnectS = 60, AfterWakeS = 30;
+    public static volatile List<Device> PanelDevices = new List<Device>();
     System.Windows.Forms.Timer scan;
     HashSet<string> known;                                          // null until the first scan
     readonly Dictionary<string, DateTime> arrived = new Dictionary<string, DateTime>();   // connected, banner not shown yet
@@ -3684,6 +3776,17 @@ class XdeckApp : Form
         }
         catch { return; }
         UpdateTrayText(pads);
+        // the panel's Devices section: every wireless device, plus mice and keyboards on USB
+        // (a wireless receiver), mice and keyboards first
+        List<Device> shown = all.FindAll(delegate (Device x) { return !x.Pad && (x.Conn == "Bluetooth" || x.Input); });
+        string[] order = { "mouse", "keyboard", "headphones", "speaker", "mic" };
+        shown.Sort(delegate (Device a, Device b)
+        {
+            int ia = Array.IndexOf(order, a.Glyph), ib = Array.IndexOf(order, b.Glyph);
+            if (ia < 0) ia = order.Length; if (ib < 0) ib = order.Length;
+            return ia != ib ? ia.CompareTo(ib) : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+        });
+        PanelDevices = shown;
         DateTime now = DateTime.Now;
         bool quiet = now < quietUntil;
         HashSet<string> keys = new HashSet<string>();

@@ -38,6 +38,10 @@ const I = {
   handbrake: '<svg viewBox="0 0 24 24"><path d="M6.5 21h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="9.8" y="10" width="4.4" height="10" rx="1.6" fill="currentColor"/><path d="M12 11L16.2 4.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><circle cx="16.6" cy="3.6" r="2.2" fill="currentColor"/></svg>',
   chev: '<svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  mouse: '<svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 6.5v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  keyboard: '<svg viewBox="0 0 24 24"><rect x="1.8" y="6" width="20.4" height="12.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 9.6h1.2M9.2 9.6h1.2M13 9.6h1.2M16.8 9.6h1.2M5.5 12.4h1.2M9.2 12.4h1.2M13 12.4h1.2M16.8 12.4h1.2M8 15.2h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+  bt: '<svg viewBox="0 0 24 24"><path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  usb: '<svg viewBox="0 0 24 24"><path d="M12 21V4M9 6.5L12 3l3 3.5M12 16l-4.5-3V10M12 13.5l4.5-2.5V8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="21" r="1.6" fill="currentColor"/><rect x="5.9" y="8.4" width="3.2" height="3" rx=".6" fill="currentColor"/><circle cx="16.5" cy="7.7" r="1.5" fill="currentColor"/></svg>',
   update: '<svg viewBox="0 0 24 24"><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   cursor: '<svg viewBox="0 0 24 24"><path d="M5 2.8l13.6 11.1-6.1.6 3.6 6.9-2.6 1.3-3.5-7L5.6 20z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   back: '<svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -166,13 +170,19 @@ function batteryHtml(p) {
   return `<span class="battery${p.charging ? " charging" : ""}" style="--bat:${color};color:${color}" title="${p.charging ? "Charging" : "On battery"}">${p.charging ? BOLT : ""}${p.battery}%<span class="pills">${pills}</span></span>`;
 }
 
+// The small battery of a device line: percent and 5 pills; "USB" on a cable; nothing if unknown.
+function batteryMini(d) {
+  if (d.conn === "USB") return `<span class="mini-bat dim">USB</span>`;
+  if (d.battery < 0) return "";
+  const color = d.battery <= 20 ? "var(--red)" : d.battery <= 45 ? "var(--amber)" : "var(--green)";
+  const lit = Math.max(1, Math.ceil(d.battery / 20));
+  let pills = "";
+  for (let i = 0; i < 5; i++) pills += `<i class="${i < lit ? "lit" : ""}"></i>`;
+  return `<span class="mini-bat" style="--bat:${color};color:${color}">${d.charging ? BOLT : ""}${d.battery}%<span class="mini-pills">${pills}</span></span>`;
+}
+
 function panelHtml() {
   let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
-  if (state.update)
-    h += `<div class="card update-card" data-act="update" data-nav="update">
-            <span class="disc">${I.update}</span>
-            <span class="who"><div class="nm">Xdeck ${esc(state.update)} is ready</div><div class="sub">Restart to update</div></span>
-            <span class="update-go">Restart</span></div>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
   h += `<h2>Controllers</h2>`;
@@ -182,11 +192,76 @@ function panelHtml() {
             <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
             <span class="who"><div class="nm">${esc(p.name)}</div></span>
             ${p.mouse ? `<span class="wired mouse-chip">Mouse</span>` : ""}${batteryHtml(p)}</div>`;
-  if (state.version) h += `<div class="version-line">Xdeck ${esc(state.version)}</div>`;
+  // mice, keyboards and other wireless devices: one thin line each, under the controllers
+  const devs = state.devices || [];
+  if (devs.length) {
+    h += `<div class="mini-list">`;
+    for (const d of devs)
+      h += `<div class="mini-row"><span class="mini-ico">${I[d.glyph] || (d.conn === "USB" ? I.usb : I.bt)}</span>
+              <span class="mini-nm">${esc(d.name)}</span>${batteryMini(d)}</div>`;
+    h += `</div>`;
+  }
+  h += `<div id="updates">${updatesHtml()}</div>`;
   if (padMode)
     h += `<div class="pad-help"><span><b>A ✕</b> select</span><span><b>B ◯</b> back</span><span><b>X ▢</b> mute</span><span><b>◀ ▶</b> volume · device</span></div>
           ${panelCombo ? `<div class="hint-line pad-combo">${esc(panelCombo)} hides the panel</div>` : ""}`;
   return h + `</div>`;
+}
+
+// ------------------------------------------------------------ updates
+// The bottom of the panel: this version, what the updater is doing (a progress bar while it
+// downloads), and the one button that fits: check now, restart to update, or try again.
+function ago(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const hr = Math.round(m / 60);
+  return hr < 24 ? `${hr} h ago` : `${Math.round(hr / 24)} d ago`;
+}
+
+function updatesHtml() {
+  const u = state.upd;
+  if (!u) return "";
+  let status, button = "", bar = "";
+  const v = esc(u.version || "");
+  switch (u.state) {
+    case "checking": status = "Checking for updates…"; bar = `<div class="upd-bar busy"><b></b></div>`; break;
+    case "downloading":
+      status = u.progress >= 0 ? `Downloading ${v}… ${u.progress}%` : `Downloading ${v}…`;
+      bar = u.progress >= 0 ? `<div class="upd-bar"><b style="width:${u.progress}%"></b></div>` : `<div class="upd-bar busy"><b></b></div>`;
+      break;
+    case "ready":
+      status = u.error ? `${v} is ready · ${esc(u.error)}` : `Xdeck ${v} is ready to install`;
+      button = `<button class="upd-btn go" data-act="update" data-nav="update">Restart to update</button>`;
+      break;
+    case "installing": status = `Installing ${v}… Xdeck restarts in a moment`; bar = `<div class="upd-bar busy"><b></b></div>`; break;
+    case "failed":
+      status = `Couldn't check for updates${u.error ? ": " + esc(u.error) : ""}`;
+      button = `<button class="upd-btn" data-act="check" data-nav="update">Try again</button>`;
+      break;
+    case "uptodate":
+      status = `Up to date${u.checked ? " · checked " + ago(u.checked) : ""}`;
+      button = `<button class="upd-btn" data-act="check" data-nav="update">Check now</button>`;
+      break;
+    default:
+      status = "Checks for updates on its own";
+      button = `<button class="upd-btn" data-act="check" data-nav="update">Check now</button>`;
+  }
+  return `<h2>Updates</h2>
+    <div class="card upd${u.state === "ready" ? " ready" : ""}">
+      <span class="disc">${I.update}</span>
+      <span class="who"><div class="nm">Xdeck ${esc(u.current)}</div><div class="sub" title="${status}">${status}</div>${bar}</span>
+      ${button}</div>`;
+}
+
+// Live while it downloads: redraw only the updates area, keeping the controller focus.
+function updateUpdates() {
+  const el = document.getElementById("updates");
+  if (!el || view !== "panel") return;
+  el.innerHTML = updatesHtml();
+  applyFocus();
+  postSize();
 }
 
 // ------------------------------------------------------------ tester
@@ -651,6 +726,7 @@ $app.addEventListener("click", (e) => {
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
   else if (act === "update") send({ type: "update" });
+  else if (act === "check") { send({ type: "check" }); state.upd = { ...state.upd, state: "checking", error: null }; updateUpdates(); }
   else if (act === "mouse") {
     const p = state.pads.find((x) => x.key === t.dataset.key);
     if (p) send({ type: "mouse", key: p.key, on: !p.mouse });
@@ -673,6 +749,7 @@ if (host) host.addEventListener("message", (e) => {
     render();
   }
   else if (m.type === "shortcuts") { panelCombo = m.combo || ""; if (view === "panel") render(); }
+  else if (m.type === "update") { state.upd = m.u; updateUpdates(); }
   else if (m.type === "pad") onPad(m.btn);
 });
 

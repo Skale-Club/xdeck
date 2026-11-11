@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 — 2026-11-11
+
+- **Mice, keyboards and other wireless devices in the panel**: one thin line each under the
+  controllers, with the battery (percent and five pills) when the device reports it, or `USB` for a
+  receiver on a cable.
+- **Updates inside the panel**: the bottom of the panel shows the version and what the updater is
+  doing (checking, downloading with a progress bar and percent, ready, installing, or why it could
+  not check), with the button that fits: **Check now**, **Restart to update** or **Try again**. It
+  works from the controller too.
+- Clicking an old "is ready" notification after that version is installed now says Xdeck is up to
+  date instead of "no update is ready".
+
 ## 0.4.0 — 2026-11-11
 
 - **Every device that connects shows up on screen**: a controller, a Bluetooth device (headphones,
