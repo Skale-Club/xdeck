@@ -1,4 +1,4 @@
-# Renders the controller silhouettes the banner draws (src\res\pad-<kind>.png) from the artwork in
+# Renders the controller silhouettes (ui\pads\model\<kind>.png: the panel shows them, the banner draws them) from the artwork in
 # ui\pads, once, with headless Microsoft Edge. Run it again only when that artwork changes; the PNGs
 # are committed, so a normal build does not need Edge.
 #   .\tools\Render-PadIcons.ps1
@@ -21,7 +21,7 @@ $icons = [ordered]@{
 }
 $tmp = Join-Path $root 'build\tmp\padicons'
 New-Item -ItemType Directory $tmp -Force | Out-Null
-$out = Join-Path $root 'src\res'
+$out = Join-Path $root 'ui\pads\model'
 New-Item -ItemType Directory $out -Force | Out-Null
 
 # the mask step lives in MakeIcon (MakeIcon --mask in.png out.png)
@@ -39,7 +39,7 @@ foreach ($kind in $icons.Keys) {
     $p = Start-Process $edge -ArgumentList @('--headless=new', '--disable-gpu', '--allow-file-access-from-files', '--hide-scrollbars',
         '--default-background-color=00000000', '--window-size=256,256', "--screenshot=$png", "file:///$($html.Replace('\', '/'))") -Wait -PassThru -WindowStyle Hidden
     if (-not (Test-Path $png)) { throw "Edge did not render $kind" }
-    & "$tmp\MakeIcon.exe" --mask $png (Join-Path $out "pad-$kind.png")
+    & "$tmp\MakeIcon.exe" --mask $png (Join-Path $out "$kind.png")
     if ($LASTEXITCODE -ne 0) { throw "mask failed for $kind" }
-    Write-Host "src\res\pad-$kind.png"
+    Write-Host "ui\pads\model\$kind.png"
 }

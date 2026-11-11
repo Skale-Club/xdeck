@@ -76,6 +76,14 @@ function padIcon(kind) {
   return I.pad;
 }
 
+// The controller's own model in its card: its silhouette (pads/model, made from the controller
+// artwork by tools/Render-PadIcons.ps1), the wheel, the handbrake, or the generic controller.
+const PAD_MODEL = { xbox: "xbox", dualsense: "dualsense", switchpro: "switchpro", joycon: "joycon" };
+function padModel(kind) {
+  if (kind === "g29" || kind === "handbrake") return padIcon(kind);
+  return `<span class="pmodel" style="--m:url('pads/model/${PAD_MODEL[kind] || "generic"}.png')"></span>`;
+}
+
 // Brand logos (ui/brands, CC0 Simple Icons / Apache Material Design Icons), tinted with CSS masks.
 const PAD_BRAND = { xbox: "xbox", dualsense: "playstation", switchpro: "nintendo", joycon: "nintendo", g29: "logitechg" };
 
@@ -197,8 +205,8 @@ function panelHtml() {
   if (!state.pads.length) h += `<div class="none">No controllers connected</div>`;
   for (const p of state.pads)
     h += `<div class="card" data-act="test" data-key="${esc(p.key)}" data-nav="card-${esc(p.key)}">
-            <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
-            <span class="who"><div class="nm">${esc(p.name)}</div></span>
+            <span class="disc">${padModel(p.kind)}</span>
+            <span class="who"><div class="nm pad-nm">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "brand") : ""}<span>${esc(p.name)}</span></div></span>
             ${p.mouse ? `<span class="wired mouse-chip">Mouse</span>` : ""}${batteryHtml(p)}</div>`;
   // mice, keyboards and other wireless devices: a circle each under the controllers, the icon
   // inside and a ring around it that fills with the battery

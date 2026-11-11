@@ -37,8 +37,9 @@ Set-Content "$tmp\AssemblyInfo.cs" -Encoding utf8 -Value @(
     "[assembly: AssemblyTitle(""Xdeck"")] [assembly: AssemblyProduct(""Xdeck"")] [assembly: AssemblyCompany(""Skale Club"")]",
     "[assembly: AssemblyVersion(""$version.0"")] [assembly: AssemblyFileVersion(""$version.0"")] [assembly: AssemblyInformationalVersion(""$version"")]")
 
-# the controller silhouettes the banner draws (tools\Render-PadIcons.ps1 makes them)
-$resources = Get-ChildItem (Join-Path $root 'src\res') -Filter 'pad-*.png' | ForEach-Object { "/resource:$($_.FullName),$($_.Name)" }
+# the controller silhouettes (tools\Render-PadIcons.ps1 makes them): the panel shows them from
+# ui\pads\model, the banner draws them from inside the exe as pad-<kind>.png
+$resources = Get-ChildItem (Join-Path $root 'ui\pads\model') -Filter '*.png' | ForEach-Object { "/resource:$($_.FullName),pad-$($_.Name)" }
 
 & $csc /nologo /target:winexe /platform:x64 /codepage:65001 /optimize+ $resources `
     "/win32manifest:$root\src\app.manifest" "/win32icon:$tmp\Xdeck.ico" `

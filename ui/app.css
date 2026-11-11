@@ -79,6 +79,10 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .logo { flex: none; width: 15px; height: 15px; background: var(--dim); -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
 .logo.big { width: 20px; height: 20px; background: var(--accent); }
 .logo.head { width: 20px; height: 20px; background: var(--text); margin-right: 2px; }
+.logo.brand { width: 16px; height: 16px; background: var(--text); }
+.pad-nm { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.pad-nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmodel { width: 24px; height: 24px; background: var(--accent); -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 /* audio rows: a brand logo fills the fixed icon column, so names stay aligned */
 .row .ico .logo { width: 40px; height: 18px; }
 .row.head .ico .logo { background: var(--accent); }

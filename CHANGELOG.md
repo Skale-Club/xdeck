@@ -1,32 +1,40 @@
-# Changelog
+﻿# Changelog
 
-## 0.7.1 — 2026-11-11
+## 0.7.2 â€” 2026-11-11
+
+- Controller cards show the controller's own model in the circle (Xbox, DualSense, Pro Controller,
+  Joy-Cons, the wheel, the handbrake), and the brand's logo in white before the name when there is
+  one (no logo for the handbrake).
+- The banner's generic controller is the generic silhouette from the same artwork, and the G29 and
+  the handbrake get their own icons there too.
+
+## 0.7.1 â€” 2026-11-11
 
 - The "Controller connected" banner (and the low-battery alert) shows the controller's own model:
   Xbox, DualSense, Pro Controller or Joy-Cons, from the same artwork as the controller test
-  (`tools\Render-PadIcons.ps1` turns it into the masks in `src\res`).
+  (`tools\Render-PadIcons.ps1` turns it into the masks in `ui\pads\model`).
 
-## 0.7.0 — 2026-11-11
+## 0.7.0 â€” 2026-11-11
 
 - **Pairing starts on the phone**: in the Xdeck Remote app, **Find my PC** makes a 6-digit code
   pop up on the screen of every Xdeck PC on the same network (the panel opens on it, with the
   phone's name); type it in the app and it is paired. Nothing to do on the PC. The relay knows
-  which network a PC is on from where it connects (over IPv4 and IPv6). Tray menu › Phone remote ›
-  **Pair a phone…** remains for a PC on another network.
+  which network a PC is on from where it connects (over IPv4 and IPv6). Tray menu â€º Phone remote â€º
+  **Pair a phoneâ€¦** remains for a PC on another network.
 
-## 0.6.2 — 2026-11-11
+## 0.6.2 â€” 2026-11-11
 
 - The panel has no Phone remote section any more. Pairing moved to the tray menu: right-click the
-  gear › **Phone remote** › **Pair a phone…** shows the code in the panel (only while it is good),
-  and a notification says when the phone paired. The same menu lists the paired phones (● connected
+  gear â€º **Phone remote** â€º **Pair a phoneâ€¦** shows the code in the panel (only while it is good),
+  and a notification says when the phone paired. The same menu lists the paired phones (â— connected
   now); click one to remove it.
 
-## 0.6.1 — 2026-11-11
+## 0.6.1 â€” 2026-11-11
 
 - Phone remote has no on/off switch any more: Xdeck is always ready for the Xdeck Remote app. The
   panel shows how it is connected, **Pair a phone** and the paired phones.
 
-## 0.6.0 — 2026-11-11
+## 0.6.0 â€” 2026-11-11
 
 - **Xdeck Remote is an app now**, installable on Android and iPhone from
   [xdeck.skale.club](https://xdeck.skale.club), and it pairs with a 6-digit code instead of a QR code:
@@ -37,13 +45,13 @@
   end to end (ECDH P-256, AES-CBC + HMAC-SHA256), so the relay cannot read it.
 - The panel lists the paired phones, with a dot for the ones connected, and **Remove**.
 
-## 0.5.1 — 2026-11-11
+## 0.5.1 â€” 2026-11-11
 
 - The Updates area shows up only when there is something to do (downloading, ready, installing);
-  otherwise the bottom of the panel just shows the version. Tray menu › **Check for updates**
+  otherwise the bottom of the panel just shows the version. Tray menu â€º **Check for updates**
   still checks on demand.
 
-## 0.5.0 — 2026-11-11
+## 0.5.0 â€” 2026-11-11
 
 - **Phone remote**, like Unified Remote: turn on **Phone remote** in the panel and scan its QR code
   with a phone on the same Wi-Fi. The phone's browser becomes a touchpad (tap to click, two fingers
@@ -53,13 +61,13 @@
   it like an app. Only a phone that opened the pairing link can send anything; **New link** unpairs
   every phone. An install for everyone (and its updates) opens port 8765 on private networks.
 
-## 0.4.2 — 2026-11-11
+## 0.4.2 â€” 2026-11-11
 
 - Mice, keyboards and other wireless devices are circles now, side by side under the controllers:
   the icon inside, and a ring around it that fills with the battery (green, amber, red when low),
   the percent below, the name on hover. A USB receiver gets a dashed ring.
 
-## 0.4.1 — 2026-11-11
+## 0.4.1 â€” 2026-11-11
 
 - **Mice, keyboards and other wireless devices in the panel**: one thin line each under the
   controllers, with the battery (percent and five pills) when the device reports it, or `USB` for a
@@ -71,7 +79,7 @@
 - Clicking an old "is ready" notification after that version is installed now says Xdeck is up to
   date instead of "no update is ready".
 
-## 0.4.0 — 2026-11-11
+## 0.4.0 â€” 2026-11-11
 
 - **Every device that connects shows up on screen**: a controller, a Bluetooth device (headphones,
   mouse, keyboard, phone) or a USB device (pen drive, headset, keyboard, phone) gets a banner with its
@@ -84,7 +92,7 @@
 - A USB or Bluetooth headset gets that one banner instead of one for its audio output and one for
   its microphone. No banner for devices built into the PC, for devices back within a minute
   (Bluetooth mice and keyboards waking up), or for what reconnects when the PC wakes from sleep.
-- **OBS Studio from the controller**, over OBS's own WebSocket server (OBS 28+, Tools › WebSocket
+- **OBS Studio from the controller**, over OBS's own WebSocket server (OBS 28+, Tools â€º WebSocket
   Server Settings): R1 + D-pad right + Cross / Square / Triangle / Circle start or stop recording,
   pause it, start or stop streaming and save the replay buffer; R1 + R3 / R1 + L3 switch to the next
   / previous scene. `shortcuts.ini` also takes `obs.virtualcam`, `obs.scene.<name>`,
@@ -92,30 +100,30 @@
   banner says what OBS did, or why it could not (OBS closed, wrong password, no such scene).
   An existing `shortcuts.ini` gets the OBS lines added.
 
-## 0.3.2 — 2026-11-10
+## 0.3.2 â€” 2026-11-10
 
 - The updater writes what it does and why it stops to `update.log` in the data folder
   (`%LOCALAPPDATA%\Xdeck`).
 
-## 0.3.1 — 2026-11-10
+## 0.3.1 â€” 2026-11-10
 
 - **XdeckSetup.exe**: install Xdeck like any Windows app, from one file. Pick everyone on this PC
-  or only me and Start with Windows; it adds Start menu entries and an entry in Settings › Apps,
+  or only me and Start with Windows; it adds Start menu entries and an entry in Settings â€º Apps,
   which uninstalls it (settings stay). `/S`, `/CurrentUser` and `/NoAutostart` install silently.
   Every release carries it at `releases/latest/download/XdeckSetup.exe`.
-- An update now also refreshes the version shown in Settings › Apps.
+- An update now also refreshes the version shown in Settings â€º Apps.
 
-## 0.3.0 — 2026-11-10
+## 0.3.0 â€” 2026-11-10
 
 - Xdeck updates itself, like the other Skale apps: a minute after start and every six hours it
   checks the latest GitHub release, downloads it in the background, keeps it only if it matches its
   signature, and offers **Restart to update** in a notification, the tray menu and the panel.
   Quitting Xdeck installs it too. Settings stay. In `C:\Program Files` Windows asks for
-  administrator approval once per update. Tray menu › **Check for updates** checks right away.
-- The panel shows the version at the bottom; `Xdeck.exe` carries it too (Explorer › Properties).
+  administrator approval once per update. Tray menu â€º **Check for updates** checks right away.
+- The panel shows the version at the bottom; `Xdeck.exe` carries it too (Explorer â€º Properties).
 - `build.ps1 -Release` signs the zip, writes `latest.json` and publishes the GitHub release.
 
-## 0.2.0 — 2026-11-10
+## 0.2.0 â€” 2026-11-10
 
 - Open and hide the panel from any controller: hold L1 + D-pad right and press Triangle (LB + right
   + Y on Xbox). Hiding it gives the focus back to the window that had it, usually the game.
@@ -126,7 +134,7 @@
 - A click anywhere outside the panel closes it, like other tray panels.
 - `Xdeck.exe` has its own icon (the white gear on a blue tile) in Explorer, Start and the Task
   Manager; `tools\MakeIcon.cs` draws it on every build.
-- Shortcuts live in `shortcuts.ini` in the data folder (tray menu › **Edit shortcuts…**): the panel
+- Shortcuts live in `shortcuts.ini` in the data folder (tray menu â€º **Edit shortcutsâ€¦**): the panel
   shortcut (buttons held together with `+` or one after another with `,`), the audio combo buttons and
   the two keyboard hotkeys. Xdeck reads the file again when it is saved, with no restart or new
   build, and names any line it cannot use.
@@ -135,7 +143,7 @@
   Menu to close, and holding B to leave the controller test. A focus ring and a button help line show
   while a controller drives the panel; moving the mouse hands it back.
 
-## 0.1.0 — 2026-11-10
+## 0.1.0 â€” 2026-11-10
 
 First version, moved into `Dev\xdeck` (it began the same day as AudioCycle, then PadDeck and Joybox).
 

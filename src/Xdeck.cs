@@ -3000,10 +3000,13 @@ static class Ui
         string key = kind + ":" + s + ":" + c.ToArgb();
         Bitmap cached;
         if (iconCache.TryGetValue(key, out cached)) return cached;
-        // a controller of a known model: its own silhouette (src\res\pad-<kind>.png), in this colour
-        if (kind.StartsWith("pad:"))
+        // a controller: its model's silhouette (src\res\pad-<kind>.png), the wheel and the handbrake
+        // drawn below, anything else the generic controller silhouette; all in this colour
+        if (kind == "pad:g29") kind = "wheel";
+        else if (kind == "pad:handbrake") kind = "handbrake";
+        else if (kind == "pad" || kind.StartsWith("pad:"))
         {
-            Bitmap model = PadModel(kind.Substring(4), s, c);
+            Bitmap model = PadModel(kind.StartsWith("pad:") ? kind.Substring(4) : "generic", s, c) ?? PadModel("generic", s, c);
             if (model != null) { iconCache[key] = model; return model; }
             kind = "pad";
         }
@@ -3027,6 +3030,8 @@ static class Ui
                 case "usb": DrawUsb(g, fill, clear, s); break;
                 case "mouse": DrawMouse(g, fill, clear, s); break;
                 case "keyboard": DrawKeyboard(g, fill, clear, s); break;
+                case "wheel": DrawWheel(g, c, fill, s); break;
+                case "handbrake": DrawHandbrake(g, c, fill, s); break;
                 default: DrawPad(g, fill, clear, s); break;
             }
         }
@@ -3034,6 +3039,32 @@ static class Ui
         raw.Dispose();
         iconCache[key] = bmp;
         return bmp;
+    }
+
+    // A steering wheel: rim, hub and three spokes (the same drawing as the panel's wheel icon).
+    static void DrawWheel(Graphics g, Color c, Brush fill, int s)
+    {
+        float k = s / 24f;
+        using (Pen p = new Pen(c, 2.4f * k))
+        {
+            g.DrawEllipse(p, 3 * k, 3 * k, 18 * k, 18 * k);
+            g.DrawLine(p, 3.6f * k, 11 * k, 9.6f * k, 11 * k);
+            g.DrawLine(p, 14.4f * k, 11 * k, 20.4f * k, 11 * k);
+            g.DrawLine(p, 12 * k, 14.6f * k, 12 * k, 20.6f * k);
+        }
+        g.FillEllipse(fill, 9.4f * k, 9.4f * k, 5.2f * k, 5.2f * k);
+    }
+
+    // A handbrake: base, body, lever and knob (the same drawing as the panel's handbrake icon).
+    static void DrawHandbrake(Graphics g, Color c, Brush fill, int s)
+    {
+        float k = s / 24f;
+        using (Pen b = new Pen(c, 2.2f * k) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            g.DrawLine(b, 6.5f * k, 21 * k, 17.5f * k, 21 * k);
+        using (GraphicsPath body = Rounded(new RectangleF(9.8f * k, 10 * k, 4.4f * k, 10 * k), 1.6f * k)) g.FillPath(fill, body);
+        using (Pen l = new Pen(c, 2.8f * k) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            g.DrawLine(l, 12 * k, 11 * k, 16.2f * k, 4.2f * k);
+        g.FillEllipse(fill, 14.4f * k, 1.4f * k, 4.4f * k, 4.4f * k);
     }
 
     static void DrawPad(Graphics g, Brush fill, Brush clear, int s)
@@ -4614,7 +4645,7 @@ static class Program
     // "Xdeck.exe --icons <file.png>" renders every icon (banner size and 4x) for a visual check.
     static void IconSheet(string file)
     {
-        string[] kinds = { "pad", "pad:xbox", "pad:dualsense", "pad:switchpro", "pad:joycon", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard" };
+        string[] kinds = { "pad", "pad:xbox", "pad:dualsense", "pad:switchpro", "pad:joycon", "pad:g29", "pad:handbrake", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard" };
         Color accent = Ui.Accent;
         Color ink = accent.GetBrightness() < 0.35f ? Color.White : accent;
         using (Bitmap bmp = new Bitmap(kinds.Length * 120 + 20, 220))
