@@ -126,3 +126,8 @@ not be automated reliably (cached element unavailable after activation and refre
 No credentials, network permissions or signing keys were changed. No existing GitHub Actions
 signing secrets or release workflow are configured. Added docs/RELEASING.md with the secure
 one-time key transfer and release steps, and ignored signing-key XML filenames defensively.
+
+Source integration: commit 2485fcc was fast-forwarded into dev and pushed to origin/dev. main and
+the latest published release remain at the previous production version (0.7.4). The fix branch was
+removed locally after integration. Publication is pending a manual authenticated transfer of the
+original key; no unsigned installer or replacement signing key was published.
