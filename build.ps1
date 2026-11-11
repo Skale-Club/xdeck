@@ -71,7 +71,7 @@ if ($Release) {
     if ($branch -ne 'main') { throw "Release from main, not '$branch'." }
     if (git -C $root status --porcelain) { throw 'Commit or stash your changes first: the release must match main.' }
     $tag = "v$version"
-    gh release view $tag --repo Skale-Club/xdeck *> $null
+    cmd /c "gh release view $tag --repo Skale-Club/xdeck >nul 2>&1"   # through cmd: PowerShell 5.1 turns gh's stderr into an error
     if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists: raise VERSION first." }
     $keyPath = if ($env:XDECK_UPDATE_KEY) { $env:XDECK_UPDATE_KEY } else { Join-Path $env:APPDATA 'Skale\xdeck-update-key.xml' }
     if (-not (Test-Path $keyPath)) { throw "Update key not found at $keyPath (tools\New-UpdateKey.ps1 makes one)." }
