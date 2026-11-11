@@ -5,8 +5,11 @@
 - **Every device that connects shows up on screen**: a controller, a Bluetooth device (headphones,
   mouse, keyboard, phone) or a USB device (pen drive, headset, keyboard, phone) gets a banner with its
   name, an icon for its kind and its battery when it reports one (pills and percent, *charging*;
-  `USB` for a controller on a cable). Several at once come one after another. When a wireless
-  device's battery drops to 15%, a banner warns once (again only after it has charged).
+  `USB` for a controller on a cable). A mouse or keyboard (as Windows sees it, or by its name) gets
+  a small one-line banner instead. Several at once come one after another.
+- **Low battery alert**: when a wireless device drops to 15%, a red card slides in at the top centre
+  of the screen with a pulsing battery, the device and how much is left, for six seconds (a click
+  closes it, as it does any banner). Again only after the device has charged.
 - A USB or Bluetooth headset gets that one banner instead of one for its audio output and one for
   its microphone. No banner for devices built into the PC, for devices back within a minute
   (Bluetooth mice and keyboards waking up), or for what reconnects when the PC wakes from sleep.

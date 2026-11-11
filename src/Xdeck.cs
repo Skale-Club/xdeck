@@ -868,6 +868,7 @@ class Device
     public string Conn = "USB";     // USB | Bluetooth
     public int Battery = -1;    // percent, -1 unknown or none
     public bool Charging, Connected, Pad;
+    public bool Input { get { return !Pad && (Glyph == "mouse" || Glyph == "keyboard"); } }   // shown discreetly
 
     public static Device Of(Pad p)
     {
@@ -1012,6 +1013,50 @@ static class Pads
 
     static string Text(byte[] b) { return b == null ? "" : Encoding.Unicode.GetString(b).TrimEnd('\0').Trim(); }
 
+    // Mice and keyboards: Windows gives each one a Mouse or Keyboard class device under the USB or
+    // Bluetooth device. These are the instance IDs (upper case) of those and of a few parents up:
+    // a USB device is a mouse when its own ID is in the list, a Bluetooth device when its address is.
+    [DllImport("cfgmgr32.dll")] static extern int CM_Get_Parent(out uint parent, uint dev, int flags);
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] static extern int CM_Get_Device_ID(uint dev, StringBuilder buf, int len, int flags);
+    static readonly Guid ClassKeyboard = new Guid("4D36E96B-E325-11CE-BFC1-08002BE10318");
+    static readonly Guid ClassMouse = new Guid("4D36E96F-E325-11CE-BFC1-08002BE10318");
+
+    static List<string> InputChain(Guid cls)
+    {
+        List<string> o = new List<string>();
+        IntPtr set = SetupDiGetClassDevs(ref cls, IntPtr.Zero, IntPtr.Zero, 0x2);   // PRESENT
+        if (set == NoSet) return o;
+        SP_DEVINFO_DATA d = new SP_DEVINFO_DATA();
+        d.cbSize = Marshal.SizeOf(d);
+        for (int i = 0; SetupDiEnumDeviceInfo(set, i, ref d); i++)
+        {
+            uint dev = d.DevInst;
+            for (int up = 0; up < 4; up++)
+            {
+                StringBuilder sb = new StringBuilder(512);
+                if (CM_Get_Device_ID(dev, sb, sb.Capacity, 0) != 0) break;
+                o.Add(sb.ToString().ToUpperInvariant());
+                uint parent;
+                if (CM_Get_Parent(out parent, dev, 0) != 0) break;
+                dev = parent;
+            }
+        }
+        SetupDiDestroyDeviceInfoList(set);
+        return o;
+    }
+
+    // The icon for a device: a mouse / keyboard by what Windows made of it, else from its name.
+    // match: the USB instance ID, or the Bluetooth address.
+    static string Kind(string name, string match, bool usb, List<string> mice, List<string> keyboards, string fallback)
+    {
+        string g = GlyphFor(name, fallback);
+        if (g == "headphones" || g == "speaker" || g == "mic" || g == "pad") return g;   // a headset's volume keys are a keyboard too
+        Predicate<string> mine = delegate (string id) { return usb ? id == match : id.Contains(match); };
+        if (mice.Exists(mine)) return "mouse";
+        if (keyboards.Exists(mine)) return "keyboard";
+        return g;
+    }
+
     // Connected Bluetooth devices that are not controllers. The battery sits on the device node
     // (Bluetooth LE) or on one of its service nodes (a headset's hands-free profile), whose
     // instance IDs carry the device's address.
@@ -1040,18 +1085,20 @@ static class Pads
                 bool connected = con != null && con.Length > 0 && con[0] != 0;
                 string key = "bt-" + m.Groups[2].Value;
                 Device dv = devs.Find(delegate (Device x) { return x.Key == key; });   // a dual-mode device is in both lists
-                if (dv == null) devs.Add(dv = new Device { Key = key, Name = name, Glyph = GlyphFor(name, "bt"), Conn = "Bluetooth" });
+                if (dv == null) devs.Add(dv = new Device { Key = key, Name = name, Conn = "Bluetooth" });
                 dv.Connected |= connected;
                 dv.Battery = Math.Max(dv.Battery, battery);
             }
             SetupDiDestroyDeviceInfoList(set);
         }
         devs = devs.FindAll(delegate (Device x) { return x.Connected; });
+        List<string> mice = InputChain(ClassMouse), keyboards = InputChain(ClassKeyboard);
         foreach (Device dv in devs)
         {
             string mac = dv.Key.Substring(3);
             foreach (KeyValuePair<string, int> b in batteries)
                 if (b.Key.Contains(mac)) dv.Battery = Math.Max(dv.Battery, b.Value);
+            dv.Glyph = Kind(dv.Name, mac, false, mice, keyboards, "bt");
         }
         return devs;
     }
@@ -1062,6 +1109,7 @@ static class Pads
     public static List<Device> Usb()
     {
         List<Device> o = new List<Device>();
+        List<string> mice = InputChain(ClassMouse), keyboards = InputChain(ClassKeyboard);
         Guid g = UsbDeviceInterface;
         IntPtr set = SetupDiGetClassDevs(ref g, IntPtr.Zero, IntPtr.Zero, 0x12);   // PRESENT | DEVICEINTERFACE
         if (set == NoSet) return o;
@@ -1082,7 +1130,8 @@ static class Pads
             if (name.Length == 0) name = Text(Prop(set, ref d, KeyFriendlyName));
             if (name.Length == 0) name = Text(Prop(set, ref d, KeyDesc));
             if (name.Length == 0 || name.ToLowerInvariant().Contains("hub")) continue;
-            o.Add(new Device { Key = "usb-" + id, Name = name, Glyph = GlyphFor(name, "usb"), Conn = "USB", Connected = true });
+            string glyph = Kind(name, id.ToUpperInvariant(), true, mice, keyboards, "usb");
+            o.Add(new Device { Key = "usb-" + id, Name = name, Glyph = glyph, Conn = "USB", Connected = true });
         }
         SetupDiDestroyDeviceInfoList(set);
         return o;
@@ -1093,8 +1142,9 @@ static class Pads
     {
         string n = name.ToLowerInvariant();
         if (n.Contains("controller") || n.Contains("gamepad") || n.Contains("joystick")) return "pad";
-        if (n.Contains("mouse") || n.Contains("trackball") || n.Contains("mx master") || n.Contains("mx anywhere")) return "mouse";
-        if (n.Contains("keyboard") || n.Contains("teclado") || n.Contains("mx keys")) return "keyboard";
+        if (n.Contains("mouse") || n.Contains("trackball") || n.Contains("trackpad") || n.Contains("mx master") ||
+            n.Contains("mx anywhere") || n.Contains("mx ergo")) return "mouse";
+        if (n.Contains("keyboard") || n.Contains("teclado") || n.Contains("mx keys") || n.Contains("pop keys")) return "keyboard";
         if (n.Contains("airpods") || n.Contains("buds") || n.Contains("head") || n.Contains("earphone") ||
             n.Contains("fone") || Regex.IsMatch(n, @"\b(wh|wf)-")) return "headphones";
         if (n.Contains("speaker") || n.Contains("soundbar") || n.Contains("caixa") || n.Contains("jbl")) return "speaker";
@@ -2614,19 +2664,27 @@ static class Ui
 }
 
 // ---------------------------------------------------------------- banner
-// Top left of the primary screen, over everything, without taking the focus: the audio output,
-// a device that connects (with its battery when it has one), the controller mouse, OBS.
+// Over everything, without taking the focus. Three looks:
+//  - normal (top left): the audio output, a device that connects (with its battery when it has
+//    one), the controller mouse, OBS;
+//  - compact (top left, one small line): a mouse or keyboard that connects, with its battery;
+//  - alert (top centre, bigger, slides in, its battery pulses): a device whose battery runs low.
+// A click on it closes it.
 class Banner : Form
 {
+    enum Look { Normal, Compact, Alert }
+
     readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
     readonly Queue<Action> after = new Queue<Action>();
-    string title = "", caption = "Audio output", glyph = "speaker";
+    Look look = Look.Normal;
+    string title = "", caption = "Audio output", glyph = "speaker", detail = "";
     int index, count;
-    int battery = NoBattery;      // a controller's battery line: percent, -1 unknown, Wired, or NoBattery
+    int battery = NoBattery;      // the battery line: percent, -1 unknown, Wired, or NoBattery
     bool charging;
     DateTime shownAt;
-    int holdMs = 2200;
+    int holdMs = 2200, baseTop;
     const int NoBattery = -2, Wired = -3;
+    static readonly Color Red = Color.FromArgb(232, 72, 85);
 
     public Banner()
     {
@@ -2655,6 +2713,14 @@ class Banner : Form
 
     protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Ui.Frame(Handle); }
 
+    // a click closes it (it fades out)
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        double left = FadeInMs + holdMs - (DateTime.Now - shownAt).TotalMilliseconds;
+        if (left > 0) shownAt = shownAt.AddMilliseconds(-left);
+    }
+
     public void ShowDevice(string name, int index, int count)
     {
         Show("Audio output", name, Audio.Glyph(name), index, count);
@@ -2662,23 +2728,46 @@ class Banner : Form
 
     public void Show(string caption, string name, string kind, int index, int count)
     {
+        look = Look.Normal;
         battery = NoBattery;
         holdMs = 2200;
         Open(caption, name, kind, index, count);
     }
 
-    // A device that connected (or runs low): its name and, under it, its battery (pills, percent,
-    // charging). A controller always has the line (USB, or battery unknown); another device only
-    // when it reports a battery.
+    // A device that connected: its name and, under it, its battery (pills, percent, charging). A
+    // controller always has the line (USB, or battery unknown); another device only when it
+    // reports a battery.
     public void ShowWithBattery(string caption, Device d)
     {
+        look = Look.Normal;
         battery = d.Pad ? (d.Conn == "USB" ? Wired : d.Battery) : (d.Battery >= 0 ? d.Battery : NoBattery);
         charging = d.Charging;
         holdMs = 3500;
         Open(caption, d.Name, d.Glyph, 0, 0);
     }
 
-    // Shows it now, or once the banner on screen is gone (several controllers connected together).
+    // A mouse or keyboard that connected: one small line with its icon, name and battery.
+    public void ShowCompact(Device d)
+    {
+        look = Look.Compact;
+        battery = d.Battery >= 0 ? d.Battery : NoBattery;
+        charging = d.Charging;
+        holdMs = 1800;
+        Open("", d.Name, d.Glyph, 0, 0);
+    }
+
+    // A device whose battery runs low.
+    public void ShowLowBattery(Device d)
+    {
+        look = Look.Alert;
+        battery = Math.Max(0, d.Battery);
+        charging = false;
+        holdMs = 6000;
+        detail = " left · charge it soon";
+        Open(d.Pad ? "Controller battery low" : "Battery low", d.Name, d.Glyph, 0, 0);
+    }
+
+    // Shows it now, or once the banner on screen is gone (several devices connected together).
     public void ShowAfter(Action show)
     {
         if (Visible && anim.Enabled) after.Enqueue(show);
@@ -2693,43 +2782,82 @@ class Banner : Form
     }
 
     const float BatX = 88, BatPillW = 3, BatPillH = 11, BatGap = 2;
+    const float MiniPillW = 2.5f, MiniPillH = 10, MiniGap = 1.5f;
     static float BatPillsW { get { return Ui.PillCount * BatPillW + (Ui.PillCount - 1) * BatGap; } }
+    static float MiniPillsW { get { return Ui.PillCount * MiniPillW + (Ui.PillCount - 1) * MiniGap; } }
+
+    int FadeInMs { get { return look == Look.Alert ? 240 : 140; } }
+    int FadeOutMs { get { return look == Look.Alert ? 380 : 260; } }
+    double Peak { get { return look == Look.Compact ? 0.94 : 1; } }
+
+    static int Measure(Graphics g, string text, Font f) { return (int)Math.Ceiling(g.MeasureString(text, f).Width); }
 
     void Open(string caption, string name, string kind, int index, int count)
     {
         this.caption = caption; title = name; glyph = kind; this.index = index; this.count = count;
-        using (Graphics g = CreateGraphics())
-        using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
-        {
-            int textW = (int)Math.Ceiling(g.MeasureString(title, tf).Width);
-            using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
-            {
-                textW = Math.Max(textW, (int)Math.Ceiling(g.MeasureString(caption.ToUpperInvariant(), cf).Width));
-                if (battery != NoBattery)
-                    textW = Math.Max(textW, (int)Math.Ceiling((battery >= 0 ? BatPillsW + 8 : 0) + g.MeasureString(BatteryText(), cf).Width));
-            }
-            Size = new Size(Math.Max(240, 88 + textW + 28), 84);
-        }
         Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-        Location = new Point(wa.Left + 50, wa.Top + 60);
+        using (Graphics g = CreateGraphics())
+        using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
+        {
+            if (look == Look.Compact)
+            {
+                using (Font nf = new Font("Segoe UI Semibold", 14f, GraphicsUnit.Pixel))
+                {
+                    int w = 42 + Measure(g, title, nf) + 14;
+                    if (battery >= 0) w += (int)Math.Ceiling(MiniPillsW) + 6 + Measure(g, BatteryText(), cf);
+                    Size = new Size(w, 40);
+                }
+            }
+            else if (look == Look.Alert)
+            {
+                using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
+                using (Font df = new Font("Segoe UI", 13f, GraphicsUnit.Pixel))
+                using (Font bf = new Font("Segoe UI Semibold", 12f, GraphicsUnit.Pixel))
+                {
+                    int textW = Math.Max(Measure(g, title, tf), 18 + Measure(g, caption.ToUpperInvariant(), bf));
+                    textW = Math.Max(textW, Measure(g, battery + "%" + detail, df) + 6);
+                    Size = new Size(Math.Max(380, 112 + textW + 28), 104);
+                }
+            }
+            else
+            {
+                using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
+                {
+                    int textW = Math.Max(Measure(g, title, tf), Measure(g, caption.ToUpperInvariant(), cf));
+                    if (battery != NoBattery)
+                        textW = Math.Max(textW, (int)Math.Ceiling((battery >= 0 ? BatPillsW + 8 : 0) + g.MeasureString(BatteryText(), cf).Width));
+                    Size = new Size(Math.Max(240, 88 + textW + 28), 84);
+                }
+            }
+        }
+        baseTop = look == Look.Alert ? wa.Top + 32 : wa.Top + 60;
+        Location = new Point(look == Look.Alert ? wa.Left + (wa.Width - Width) / 2 : wa.Left + 50, baseTop);
         Invalidate();
         if (!Visible) { Opacity = 0; Show(); }
         shownAt = DateTime.Now;
         anim.Start();
+        Step();
     }
 
     void Step()
     {
-        double t = (DateTime.Now - shownAt).TotalMilliseconds;
-        if (t < 140) Opacity = t / 140.0;
-        else if (t < 140 + holdMs) Opacity = 1;
-        else if (t < 140 + holdMs + 260) Opacity = 1 - (t - 140 - holdMs) / 260.0;
+        double t = (DateTime.Now - shownAt).TotalMilliseconds, inMs = FadeInMs, outMs = FadeOutMs;
+        if (t < inMs)
+        {
+            double k = t / inMs;
+            Opacity = Peak * k;
+            if (look == Look.Alert) Top = baseTop - (int)Math.Round(18 * Math.Pow(1 - k, 3));   // slides down into place
+        }
+        else if (t < inMs + holdMs) { Opacity = Peak; Top = baseTop; }
+        else if (t < inMs + holdMs + outMs) Opacity = Peak * (1 - (t - inMs - holdMs) / outMs);
         else
         {
             anim.Stop();
             Hide();
             if (after.Count > 0) after.Dequeue()();
+            return;
         }
+        if (look == Look.Alert) Invalidate();   // the battery pulses
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -2737,14 +2865,106 @@ class Banner : Form
         Graphics g = e.Graphics;
         Ui.Smooth(g);
         g.Clear(Ui.Back);
-        Color accent = glyph == "rec" || glyph == "live" ? Color.FromArgb(232, 72, 85) : Ui.Accent;
+        if (look == Look.Compact) PaintCompact(g);
+        else if (look == Look.Alert) PaintAlert(g);
+        else PaintNormal(g);
+    }
+
+    static Color Ink(Color accent) { return accent.GetBrightness() < 0.35f ? Color.White : accent; }
+
+    void Pills(Graphics g, float x, float y, float w, float h, float gap, Color on)
+    {
+        int lit = Math.Max(1, (int)Math.Ceiling(battery / (100.0 / Ui.PillCount)));
+        for (int i = 0; i < Ui.PillCount; i++)
+            using (GraphicsPath p = Ui.Rounded(new RectangleF(x + i * (w + gap), y, w, h), w / 2))
+            using (Brush b = new SolidBrush(i < lit ? on : Color.FromArgb(62, 62, 66)))
+                g.FillPath(b, p);
+    }
+
+    void PaintCompact(Graphics g)
+    {
+        Color accent = Ui.Accent;
+        using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 3, Height);
+        Ui.Icon(g, glyph, new RectangleF(14, 10, 20, 20), Ink(accent));
+        float x = 40;
+        using (Font nf = new Font("Segoe UI Semibold", 14f, GraphicsUnit.Pixel))
+        using (Brush tb = new SolidBrush(Ui.Text))
+        {
+            g.DrawString(title, nf, tb, x, 10);
+            x += g.MeasureString(title, nf).Width + 6;
+        }
+        if (battery < 0) return;
+        Color bc = Ui.BatteryColor(battery);
+        Pills(g, x, 15, MiniPillW, MiniPillH, MiniGap, bc);
+        using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
+        using (Brush b = new SolidBrush(bc))
+            g.DrawString(BatteryText(), cf, b, x + MiniPillsW + 3, 12);
+    }
+
+    void PaintAlert(Graphics g)
+    {
+        double t = (DateTime.Now - shownAt).TotalMilliseconds / 1000.0;
+        float pulse = (float)(0.5 + 0.5 * Math.Sin(t * Math.PI * 2 * 0.9));   // 0..1, a bit under once a second
+
+        // a soft red glow from the left, and the red strip
+        using (LinearGradientBrush glow = new LinearGradientBrush(new Rectangle(0, 0, Width, Height), Color.FromArgb(64, Red), Color.FromArgb(0, Red), 0f))
+            g.FillRectangle(glow, 0, 0, Width, Height);
+        using (Brush r = new SolidBrush(Red)) g.FillRectangle(r, 0, 0, 4, Height);
+
+        // the battery: a halo that breathes, the outline, and its charge in red
+        RectangleF body = new RectangleF(24, 38, 54, 28);
+        float halo = 66 + 10 * pulse;
+        using (GraphicsPath hp = new GraphicsPath())
+        {
+            hp.AddEllipse(body.X + body.Width / 2 - halo / 2 + 2, body.Y + body.Height / 2 - halo / 2, halo, halo);
+            using (PathGradientBrush pb = new PathGradientBrush(hp))
+            {
+                pb.CenterColor = Color.FromArgb((int)(40 + 50 * pulse), Red);
+                pb.SurroundColors = new Color[] { Color.FromArgb(0, Red) };
+                g.FillPath(pb, hp);
+            }
+        }
+        using (GraphicsPath outline = Ui.Rounded(body, 6))
+        using (Pen pen = new Pen(Color.FromArgb(230, Ui.Text), 2.5f))
+            g.DrawPath(pen, outline);
+        using (GraphicsPath nub = Ui.Rounded(new RectangleF(body.Right + 2, body.Y + 9, 4, 10), 1.5f))
+        using (Brush nb = new SolidBrush(Color.FromArgb(230, Ui.Text)))
+            g.FillPath(nb, nub);
+        float inner = body.Width - 10;
+        float level = Math.Max(5, inner * Math.Min(100, battery) / 100f);
+        using (GraphicsPath charge = Ui.Rounded(new RectangleF(body.X + 5, body.Y + 5, level, body.Height - 10), 3))
+        using (Brush cb = new SolidBrush(Color.FromArgb((int)(150 + 105 * pulse), Red)))
+            g.FillPath(cb, charge);
+
+        // the device's icon and BATTERY LOW, its name, how much is left
+        Ui.Icon(g, glyph, new RectangleF(112, 18, 14, 14), Red);
+        using (Font bf = new Font("Segoe UI Semibold", 12f, GraphicsUnit.Pixel))
+        using (Brush rb = new SolidBrush(Red))
+            g.DrawString(caption.ToUpperInvariant(), bf, rb, 130, 16);
+        using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
+        using (Brush tb = new SolidBrush(Ui.Text))
+            g.DrawString(title, tf, tb, 108, 34);
+        using (Font pf = new Font("Segoe UI Semibold", 13f, GraphicsUnit.Pixel))
+        using (Font df = new Font("Segoe UI", 13f, GraphicsUnit.Pixel))
+        using (Brush rb = new SolidBrush(Red))
+        using (Brush db = new SolidBrush(Ui.Dim))
+        {
+            string pct = battery + "%";
+            StringFormat exact = StringFormat.GenericTypographic;
+            g.DrawString(pct, pf, rb, 112, 68, exact);
+            g.DrawString(detail, df, db, 112 + g.MeasureString(pct, pf, PointF.Empty, exact).Width, 68, exact);
+        }
+    }
+
+    void PaintNormal(Graphics g)
+    {
+        Color accent = glyph == "rec" || glyph == "live" ? Red : Ui.Accent;
 
         // accent strip + icon disc
         using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 4, Height);
         RectangleF disc = new RectangleF(20, 18, 48, 48);
         using (Brush a = new SolidBrush(Color.FromArgb(48, accent))) g.FillEllipse(a, disc);
-        Ui.Icon(g, glyph, new RectangleF(disc.X + 12, disc.Y + 12, disc.Width - 24, disc.Height - 24),
-                accent.GetBrightness() < 0.35f ? Color.White : accent);
+        Ui.Icon(g, glyph, new RectangleF(disc.X + 12, disc.Y + 12, disc.Width - 24, disc.Height - 24), Ink(accent));
 
         using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
         using (Brush cb = new SolidBrush(Ui.Dim))
@@ -2753,18 +2973,14 @@ class Banner : Form
         using (Brush tb = new SolidBrush(Ui.Text))
             g.DrawString(title, tf, tb, 84, 32);
 
-        // a controller's battery: pills lit by level, then the percent (or USB / unknown)
+        // the battery: pills lit by level, then the percent (or USB / unknown)
         if (battery != NoBattery)
         {
             float x = BatX;
             Color bc = battery >= 0 ? Ui.BatteryColor(battery) : Ui.Dim;
             if (battery >= 0)
             {
-                int lit = Math.Max(1, (int)Math.Ceiling(battery / (100.0 / Ui.PillCount)));
-                for (int i = 0; i < Ui.PillCount; i++)
-                    using (GraphicsPath p = Ui.Rounded(new RectangleF(x + i * (BatPillW + BatGap), 63, BatPillW, BatPillH), BatPillW / 2))
-                    using (Brush b = new SolidBrush(i < lit ? bc : Color.FromArgb(62, 62, 66)))
-                        g.FillPath(b, p);
+                Pills(g, x, 63, BatPillW, BatPillH, BatGap, bc);
                 x += BatPillsW + 8;
             }
             using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
@@ -3442,8 +3658,9 @@ class XdeckApp : Form
 
     // ------------------------------------------------ devices
     // A banner for each device that connects: a controller, a Bluetooth device (headphones, mouse,
-    // keyboard, phone) or a USB device, with its battery when it reports one; and one when a
-    // wireless device's battery gets low (again only after it charged or came back up).
+    // keyboard, phone) or a USB device, with its battery when it reports one (a mouse or keyboard
+    // in a small one); and an alert when a wireless device's battery gets low (again only after it
+    // charged or came back up).
     const int LowBattery = 15, PadBatteryWaitMs = 5000, BatteryWaitMs = 3000, QuietReconnectS = 60, AfterWakeS = 30;
     System.Windows.Forms.Timer scan;
     HashSet<string> known;                                          // null until the first scan
@@ -3491,9 +3708,11 @@ class XdeckApp : Form
             // first input reports, a headset once its hands-free profile connects): wait a little for it.
             if (d.Conn != "USB" && d.Battery < 0 && (now - arrived[key]).TotalMilliseconds < (d.Pad ? PadBatteryWaitMs : BatteryWaitMs)) continue;
             arrived.Remove(key);
-            if (d.Battery >= 0 && d.Battery <= LowBattery && !d.Charging) lowWarned.Add(key);   // the banner shows it already
+            // a mouse or keyboard discreetly; anything else with the full banner (a low battery
+            // gets its alert right after, from the loop below)
             string caption = d.Pad ? "Controller connected" : d.Conn == "USB" ? "USB device connected" : "Bluetooth device connected";
-            banner.ShowAfter(delegate { banner.ShowWithBattery(caption, d); });
+            if (d.Input) banner.ShowAfter(delegate { banner.ShowCompact(d); });
+            else banner.ShowAfter(delegate { banner.ShowWithBattery(caption, d); });
         }
 
         foreach (Device d in all)
@@ -3503,7 +3722,7 @@ class XdeckApp : Form
             if (d.Battery <= LowBattery && lowWarned.Add(d.Key))
             {
                 Device low = d;
-                banner.ShowAfter(delegate { banner.ShowWithBattery(low.Pad ? "Controller battery low" : "Battery low", low); });
+                banner.ShowAfter(delegate { banner.ShowLowBattery(low); });
             }
         }
         lowWarned.RemoveWhere(delegate (string k) { return !keys.Contains(k); });

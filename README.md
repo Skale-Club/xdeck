@@ -56,8 +56,12 @@ Xdeck lives in the system tray as a gear:
 Every device that connects shows up in a banner at the top left of the screen: a controller, a
 Bluetooth device (headphones, mouse, keyboard, phone, speaker) or a USB device (a pen drive, a headset,
 a keyboard, a phone), with its battery when it reports one (the pills and the percent, *charging*;
-a controller on a cable says `USB`). Several at once come one after another. When a wireless device
-drops to 15%, a banner warns once (and again only after it has charged).
+a controller on a cable says `USB`). A mouse or keyboard gets a small one-line banner instead, with
+its battery when it has one. Several at once come one after another.
+
+When a wireless device drops to 15%, an alert slides in at the top centre of the screen: a red card
+with a pulsing battery, the device and how much is left. It stays six seconds (a click closes it) and
+comes back only after the device has charged.
 
 A headset that brings its own audio output and microphone gets one banner, not three. Devices that
 come back within a minute (a Bluetooth mouse waking up), devices built into the PC, and everything
@@ -213,8 +217,10 @@ pelo próprio controle.
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).
 - **Dispositivo conectado:** qualquer dispositivo que conectar aparece num aviso no canto da tela —
   controle, Bluetooth (fone, mouse, teclado, celular, caixa de som) ou USB (pendrive, headset,
-  teclado, celular) — com a bateria quando ele informa (barrinhas e porcentagem, *charging*). Quando
-  um dispositivo sem fio chega a 15%, um aviso aparece uma vez (e de novo só depois de carregar).
+  teclado, celular) — com a bateria quando ele informa (barrinhas e porcentagem, *charging*). Mouse
+  e teclado aparecem de forma discreta, numa linha só, com a bateria se tiverem. Quando um
+  dispositivo sem fio chega a 15%, um alerta vermelho desliza no topo da tela, com a bateria pulsando,
+  o nome e quanto resta (clique para fechar); só volta depois de carregar.
   Headset com saída de áudio e microfone gera um aviso só; dispositivos internos do PC, os que voltam
   em menos de um minuto e os que reconectam quando o PC acorda não geram aviso.
 - **Testar um controle:** clique no cartão dele no painel.
