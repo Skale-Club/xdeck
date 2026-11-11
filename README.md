@@ -10,16 +10,21 @@ Made by **[Skale Club](https://skale.club)**.
 
 ## Install
 
+**[Download XdeckSetup.exe](https://github.com/Skale-Club/xdeck/releases/latest/download/XdeckSetup.exe)**
+and run it. Pick **Install for everyone on this PC** (`C:\Program Files\Xdeck`, everyone's Start
+menu, asks for administrator approval) or **Install only for me** (`%LOCALAPPDATA%\Programs\Xdeck`,
+no approval), and whether it starts with Windows. Xdeck then shows up in Start and in
+Settings › Apps › Installed apps, which also uninstalls it.
+
+Windows may say *Windows protected your PC* the first time, because the file is not signed with a
+paid certificate: click **More info** › **Run anyway**.
+
 It needs Windows 10/11 64-bit with the Microsoft Edge WebView2 Runtime (built into Windows 11) and
-.NET Framework 4.8 (built into Windows 10 1903+). Unzip the release, then either:
+.NET Framework 4.8 (built into Windows 10 1903+).
 
-| How | What happens |
-|---|---|
-| **For every user of the PC** — right-click `install.ps1` › *Run with PowerShell* (approve the admin prompt) | Installs to `C:\Program Files\Xdeck`, adds it to everyone's Start menu and starts it with Windows for everyone. |
-| **Only for you** — `install.ps1 -CurrentUser` | Installs to `%LOCALAPPDATA%\Programs\Xdeck`, your Start menu and your startup. No admin. |
-| **Portable** — double-click `Xdeck.exe` in the unzipped folder | Runs from there; its settings stay in the `Data\` folder beside it. |
-
-The latest zip is on the [releases page](https://github.com/Skale-Club/xdeck/releases/latest).
+Also on the [releases page](https://github.com/Skale-Club/xdeck/releases/latest): the zip, a portable
+copy (run `Xdeck.exe` from the unzipped folder; settings stay in `Data\` beside it). Silent install:
+`XdeckSetup.exe /S` (everyone) or `/S /CurrentUser`, add `/NoAutostart` to skip Start with Windows.
 
 **Updates are automatic.** Xdeck checks for a new release a minute after it starts and every six
 hours, downloads it in the background and checks its signature. Then a notification, the tray menu
@@ -27,8 +32,8 @@ and the panel offer **Restart to update**; quitting Xdeck installs it too. Setti
 Installed for every user (in `C:\Program Files`), Windows asks for administrator approval once per
 update. Tray menu › **Check for updates** checks right away.
 
-`install.ps1 -Uninstall` (add `-CurrentUser` for a per-user install) removes it. An installed Xdeck
-keeps each user's settings in `%LOCALAPPDATA%\Xdeck`. On first run the gear is pinned to the taskbar
+Uninstall from Settings › Apps (or `"Uninstall Xdeck.exe" /uninstall` in its folder). An installed
+Xdeck keeps each user's settings in `%LOCALAPPDATA%\Xdeck`, also after uninstalling. On first run the gear is pinned to the taskbar
 instead of hiding under the ^ arrow. Opening Xdeck a second time does nothing; the first copy keeps
 running (one per signed-in user).
 
@@ -131,8 +136,8 @@ mouse.speed = 1400                 # pointer pixels per second at full tilt (200
 ```powershell
 .\build.ps1 -Release            # zip + sign + latest.json + GitHub release v<VERSION> (from a clean main)
 .\build.ps1                     # build\Xdeck
-.\build.ps1 -Zip                # + dist\Xdeck-<version>.zip (portable, with install.ps1)
-.\build.ps1 -Install            # + install for the current user
+.\build.ps1 -Zip                # + dist\XdeckSetup.exe and dist\Xdeck-<version>.zip (portable)
+.\build.ps1 -Install            # + install for the current user (XdeckSetup.exe /S /CurrentUser)
 .\build.ps1 -Install -AllUsers  # + install for every user (admin prompt)
 ```
 
@@ -149,10 +154,11 @@ Seu áudio e seus controles, pelo tray. Troque a saída de som e o microfone, aj
 a bateria de cada controle e teste controles, volante e freio de mão — pelo painel, por atalho ou
 pelo próprio controle.
 
-- **Instalar para todos os usuários do PC:** botão direito em `install.ps1` › *Executar com o
-  PowerShell* e aprove o pedido de administrador. Vai para `C:\Program Files\Xdeck`, entra no Menu
-  Iniciar e abre com o Windows para todo mundo. Só para você: `install.ps1 -CurrentUser`.
-  Portátil: dois cliques em `Xdeck.exe` na pasta descompactada.
+- **Instalar:** baixe o **[XdeckSetup.exe](https://github.com/Skale-Club/xdeck/releases/latest/download/XdeckSetup.exe)**
+  e abra. Escolha **para todos do PC** (pede aprovação de administrador) ou **só para mim**, e se abre
+  com o Windows. Ele entra no Menu Iniciar e em Configurações › Aplicativos, por onde também
+  desinstala. Se o Windows disser *O Windows protegeu o computador*, clique em **Mais informações** ›
+  **Executar assim mesmo** (o arquivo não tem certificado pago). Portátil: o zip da release.
 - **Atualizações:** automáticas. O Xdeck procura versão nova ao abrir e a cada 6 horas, baixa
   sozinho e avisa **Restart to update** (notificação, menu do tray e painel); fechar o Xdeck também
   instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por

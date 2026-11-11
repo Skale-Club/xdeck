@@ -1,7 +1,7 @@
 # Build Xdeck into build\Xdeck, optionally zip it and/or install it on this PC.
-#   .\build.ps1                     compile + assemble build\Xdeck
-#   .\build.ps1 -Zip                ... and dist\Xdeck-<version>.zip (portable: ships a Data folder)
-#   .\build.ps1 -Install            ... and install for the current user (install.ps1 -CurrentUser)
+#   .\build.ps1                     compile + assemble build\Xdeck and build\XdeckSetup.exe
+#   .\build.ps1 -Zip                ... and dist\XdeckSetup.exe + dist\Xdeck-<version>.zip (portable)
+#   .\build.ps1 -Install            ... and install for the current user (XdeckSetup.exe /S /CurrentUser)
 #   .\build.ps1 -Install -AllUsers  ... and install for every user of this PC (asks for admin)
 #   .\build.ps1 -Release            ... zip, sign it, write latest.json and publish GitHub release
 #                                   v<VERSION>; every installed Xdeck picks it up by itself
@@ -48,9 +48,26 @@ Copy-Item (Join-Path $root 'ui') (Join-Path $out 'ui') -Recurse
 Copy-Item (Join-Path $root 'README.md'), (Join-Path $root 'CHANGELOG.md'), (Join-Path $root 'install.ps1') $out
 Write-Host "Built Xdeck $version -> $out"
 
+# XdeckSetup.exe: the installer, with build\Xdeck inside (setup\Setup.cs)
+$payload = Join-Path $tmp 'payload.zip'
+if (Test-Path $payload) { Remove-Item $payload }
+Compress-Archive -Path $out -DestinationPath $payload
+Set-Content "$tmp\SetupInfo.cs" -Encoding utf8 -Value @(
+    'using System.Reflection;',
+    "[assembly: AssemblyTitle(""Xdeck Setup"")] [assembly: AssemblyProduct(""Xdeck"")] [assembly: AssemblyCompany(""Skale Club"")]",
+    "[assembly: AssemblyVersion(""$version.0"")] [assembly: AssemblyFileVersion(""$version.0"")] [assembly: AssemblyInformationalVersion(""$version"")]")
+$setupExe = Join-Path $root 'build\XdeckSetup.exe'
+& $csc /nologo /target:winexe /platform:anycpu /codepage:65001 /optimize+ `
+    "/win32manifest:$root\setup\setup.manifest" "/win32icon:$tmp\Xdeck.ico" `
+    /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll "/resource:$payload,Xdeck.payload.zip" "/resource:$tmp\Xdeck.ico,Xdeck.ico" `
+    "/out:$setupExe" (Join-Path $root 'setup\Setup.cs') "$tmp\SetupInfo.cs"
+if ($LASTEXITCODE -ne 0) { throw "Setup build failed ($LASTEXITCODE)" }
+Write-Host "Built XdeckSetup.exe ($([int]((Get-Item $setupExe).Length / 1KB)) KB)"
+
 if ($Zip) {
     $dist = Join-Path $root 'dist'
     New-Item -ItemType Directory $dist -Force | Out-Null
+    Copy-Item $setupExe (Join-Path $dist 'XdeckSetup.exe') -Force
     $zipFile = Join-Path $dist "Xdeck-$version.zip"
     if (Test-Path $zipFile) { Remove-Item $zipFile }
     # the zip runs portable straight away (Data next to the exe); install.ps1 installs without it
@@ -96,13 +113,15 @@ if ($Release) {
     $latest = Join-Path $dist 'latest.json'
     [IO.File]::WriteAllText($latest, ($manifest | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
     $notesFile = Join-Path $tmp 'notes.md'
-    [IO.File]::WriteAllText($notesFile, $notes + "`n`nInstall: unzip, then right-click install.ps1 > Run with PowerShell (or install.ps1 -CurrentUser, or run Xdeck.exe as is). Installed copies update themselves.", (New-Object Text.UTF8Encoding $false))
-    gh release create $tag $zipFile $latest --repo Skale-Club/xdeck --target main --title "Xdeck $version" --notes-file $notesFile
+    [IO.File]::WriteAllText($notesFile, $notes + "`n`n**Install:** download **XdeckSetup.exe** and run it. Installed copies update themselves.`n`nThe zip is the portable copy (run Xdeck.exe from the unzipped folder), and what installed copies download to update.", (New-Object Text.UTF8Encoding $false))
+    gh release create $tag (Join-Path $dist 'XdeckSetup.exe') $zipFile $latest --repo Skale-Club/xdeck --target main --title "Xdeck $version" --notes-file $notesFile
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
     Write-Host "Released ${tag}: every installed Xdeck picks it up within six hours, or at its next start."
 }
 
 if ($Install) {
-    $installer = Join-Path $out 'install.ps1'
-    if ($AllUsers) { & $installer } else { & $installer -CurrentUser }
+    # the same installer users run, silently (it asks for administrator approval for -AllUsers)
+    $p = Start-Process $setupExe -ArgumentList $(if ($AllUsers) { '/S' } else { '/S /CurrentUser' }) -Wait -PassThru
+    if ($p.ExitCode -ne 0) { throw "Setup failed ($($p.ExitCode))" }
+    Write-Host "Installed Xdeck $version ($(if ($AllUsers) { 'all users' } else { 'current user' }))."
 }

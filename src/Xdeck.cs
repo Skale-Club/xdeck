@@ -428,6 +428,17 @@ static class Updater
                 catch (Exception ex) { failed++; say("failed " + dest + ": " + ex.Message); }
             }
             say(failed == 0 ? "done" : failed + " files failed");
+            // Settings › Apps shows the new version (XdeckSetup.exe made that entry)
+            foreach (RegistryHive hive in new RegistryHive[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser })
+                try
+                {
+                    using (RegistryKey root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64))
+                    using (RegistryKey k = root.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Xdeck", true))
+                        if (k != null && string.Equals(((k.GetValue("InstallLocation") as string) ?? "").TrimEnd('\\'),
+                                                       target.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                            k.SetValue("DisplayVersion", Current);
+                }
+                catch { }
             if (relaunch) Process.Start("explorer.exe", "\"" + Path.Combine(target, "Xdeck.exe") + "\"");
             return failed == 0 ? 0 : 2;
         }

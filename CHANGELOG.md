@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 — 2026-11-10
+
+- **XdeckSetup.exe**: install Xdeck like any Windows app, from one file. Pick everyone on this PC
+  or only me and Start with Windows; it adds Start menu entries and an entry in Settings › Apps,
+  which uninstalls it (settings stay). `/S`, `/CurrentUser` and `/NoAutostart` install silently.
+  Every release carries it at `releases/latest/download/XdeckSetup.exe`.
+- An update now also refreshes the version shown in Settings › Apps.
+
 ## 0.3.0 — 2026-11-10
 
 - Xdeck updates itself, like the other Skale apps: a minute after start and every six hours it
