@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Remote PWA
+
+- Center the phone pairing screen vertically, keep overflow scrollable, and show the Xdeck name
+  below its icon. Refresh the offline shell cache for the updated screen.
+
 ## 0.7.5 — 2026-11-11
 
 - Hide audio output, microphone and controller sections when no devices are connected.

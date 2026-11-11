@@ -131,3 +131,114 @@ Source integration: commit 2485fcc was fast-forwarded into dev and pushed to ori
 the latest published release remain at the previous production version (0.7.4). The fix branch was
 removed locally after integration. Publication is pending a manual authenticated transfer of the
 original key; no unsigned installer or replacement signing key was published.
+
+## 2026-11-11 — Center mobile pairing and show the Xdeck name
+
+Target: Projects / Xdeck / Journal; data source unresolved.
+
+- Date: 2026-11-11
+- Type: Fix
+- Area: UI
+- Status: Partial (implemented locally; not deployed)
+- Summary: Center the PWA pairing content vertically and display the Xdeck name below its icon.
+- Agent: Codex
+- Model: Session orchestrator; no delegation for this small edit
+- Repo / Branch: Skale-Club/xdeck / fix/remote-pairing-layout
+- Commits / PR: uncommitted
+- Tests: Diff whitespace and HTML structure reviewed; mobile visual verification not run.
+
+## Context
+
+The owner identified the mobile Connect to your PC screen, requested vertical centering and the
+application name, and asked what I already have a code means.
+
+## What changed
+
+Wrap pairing content in a bounded flex column with automatic vertical margins. Use symmetric
+safe-area-aware outer spacing; retain scrolling when content exceeds the screen. Add the Xdeck
+name below its existing icon. Pairing behavior is unchanged.
+
+## How it was built
+
+Read the actual pairing markup, CSS and click handlers in remote/public/index.html. Update only
+the layout and brand markup. Surface remained in critical memory mode, so no browser automation
+or development server was started.
+
+## Decisions and why
+
+Automatic vertical margins center short content while collapsing on overflow, keeping the top of
+long code-entry and error states reachable. The existing manual option is useful for codes created
+on the PC through Phone remote > Pair a phone, including when network discovery is unavailable.
+
+## Tests and evidence
+
+git diff --check passed. Reviewed element nesting and preservation of the existing pairing element
+IDs and event handlers. The Find my PC flow discovers PCs; I already have a code reveals manual
+code entry and the PC menu instructions. Both use the same six-digit pairing endpoint.
+
+## Not done / risks
+
+No Cloudflare deployment, commit or push. Mobile visual verification remains pending. This PWA is
+deployed independently through remote/wrangler.toml; it does not require the desktop signing key.
+
+## Next
+
+Review on a phone and publish the PWA when authorized. Estimated 2 minutes; completed in about
+2 minutes.
+
+## 2026-11-11 — Publish the centered Remote PWA pairing screen
+
+Target: Projects / Xdeck / Journal; data source unresolved.
+
+- Date: 2026-11-11
+- Type: Release
+- Area: UI
+- Status: Partial (production publication authorized; Cloudflare login in progress)
+- Summary: Prepare the centered pairing screen and visible Xdeck name for the Cloudflare PWA,
+  with a new service-worker shell cache. Desktop signed release remains separate.
+- Agent: Codex
+- Model: Session orchestrator (production work)
+- Repo / Branch: Skale-Club/xdeck / fix/remote-pairing-layout
+- Commits / PR: see Git history for the remote-pairing-layout change
+- Tests: Inline JavaScript syntax, service-worker syntax, unique HTML IDs and git diff --check passed.
+
+## Context
+
+The owner explicitly requested PWA production publication to see the installed mobile app update.
+
+## What changed
+
+Prepare the centered pairing UI and Xdeck brand for deployment. Bump the service-worker shell cache
+from xdeck-remote-v2 to v3 so an installed client fetches the refreshed offline assets. The existing
+network-first navigation strategy, skipWaiting and clients.claim behavior is preserved.
+
+## How it was built
+
+Read the live production HTML and service worker and save pre-deploy copies in the Codex task's
+work/xdeck-pwa-release folder. Confirm the relay worker and Wrangler configuration are unchanged
+relative to origin/main. The Surface's Cloudflare OAuth credentials were rejected (400); open the
+official Wrangler OAuth login for the owner to complete without handling authentication UI.
+
+## Decisions and why
+
+PWA deployment uses Cloudflare Workers and static assets, independently of the Windows update
+signing key. Reopening or refreshing the installed PWA loads the new document without clearing
+localStorage, so existing PC pairings are preserved.
+
+## Tests and evidence
+
+node --check remote/public/sw.js passed. The inline script parsed through node:vm, all element IDs
+were unique and git diff --check passed. Production baseline still lacked the new centered content
+and brand markup. The webhook-security skill was applied previously; no webhook routes or relay
+authentication code changed in this publication.
+
+## Not done / risks
+
+Deployment and production read-back await successful Cloudflare authentication. No browser test
+was run on the memory-constrained Surface. An already open page keeps its current document until
+it is refreshed or reopened; service-worker activation alone does not replace its DOM.
+
+## Next
+
+Verify the Cloudflare account and current deployment, publish the approved PWA, read back the live
+HTML and service worker, and record the production version and result here.

@@ -79,8 +79,10 @@
 
   /* pairing */
   #pair { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: none; flex-direction: column; align-items: center;
-    padding: calc(40px + var(--safe-t)) 24px calc(24px + var(--safe-b)); gap: 18px; overflow-y: auto; text-align: center; }
+    padding: calc(24px + var(--safe-t)) 24px calc(24px + var(--safe-b)); overflow-y: auto; text-align: center; }
   #pair.on { display: flex; }
+  .pair-content { width: 100%; max-width: 360px; margin-block: auto; flex: none; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .pair-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 26px; font-weight: 700; }
   #pair .logo { width: 72px; height: 72px; border-radius: 18px; }
   #pair h1 { margin: 0; font-size: 24px; }
   #pair p { margin: 0; color: var(--dim); max-width: 330px; }
@@ -218,21 +220,23 @@
 <div id="menu"><div class="sheet" id="sheet"></div></div>
 
 <div id="pair">
-  <img class="logo" src="/icon-192.png" alt="">
-  <h1>Connect to your PC</h1>
-  <p id="pairLead">Keep the phone on the same Wi-Fi as the PC, with Xdeck running.</p>
-  <button class="btn accent" id="findBtn">Find my PC</button>
-  <div id="codeStep" style="display:none; width:100%; max-width:330px; flex-direction:column; align-items:center; gap:14px">
-    <p id="codeLead">Type the code that appeared on the PC:</p>
-    <input class="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
+  <div class="pair-content">
+    <div class="pair-brand"><img class="logo" src="/icon-192.png" alt=""><span>Xdeck</span></div>
+    <h1>Connect to your PC</h1>
+    <p id="pairLead">Keep the phone on the same Wi-Fi as the PC, with Xdeck running.</p>
+    <button class="btn accent" id="findBtn">Find my PC</button>
+    <div id="codeStep" style="display:none; width:100%; max-width:330px; flex-direction:column; align-items:center; gap:14px">
+      <p id="codeLead">Type the code that appeared on the PC:</p>
+      <input class="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
+    </div>
+    <div id="pairErr"></div>
+    <button class="btn accent" id="pairBtn" disabled style="display:none">Pair</button>
+    <p class="hint" id="manualHint" style="display:none">PC on another network? On the PC, right-click the Xdeck gear in the tray › <b>Phone remote</b> › <b>Pair a phone…</b> and type that code here.</p>
+    <button class="btn" id="haveCode" style="background:none;color:var(--dim);min-height:36px">I already have a code</button>
+    <button class="btn" id="installBtn" style="display:none">Install the app</button>
+    <p class="hint" id="iosHint" style="display:none">To keep it on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+    <button class="btn" id="pairCancel" style="display:none">Cancel</button>
   </div>
-  <div id="pairErr"></div>
-  <button class="btn accent" id="pairBtn" disabled style="display:none">Pair</button>
-  <p class="hint" id="manualHint" style="display:none">PC on another network? On the PC, right-click the Xdeck gear in the tray › <b>Phone remote</b> › <b>Pair a phone…</b> and type that code here.</p>
-  <button class="btn" id="haveCode" style="background:none;color:var(--dim);min-height:36px">I already have a code</button>
-  <button class="btn" id="installBtn" style="display:none">Install the app</button>
-  <p class="hint" id="iosHint" style="display:none">To keep it on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
-  <button class="btn" id="pairCancel" style="display:none">Cancel</button>
 </div>
 
 <script>
