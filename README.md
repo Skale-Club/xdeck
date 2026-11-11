@@ -45,6 +45,10 @@ Xdeck lives in the system tray as a gear:
 - **Right click**: open the panel, next / previous audio output, **Start with Windows**,
   **Edit shortcuts…**, **Check for updates** (or **Restart to update** when one is ready), quit.
 
+In the panel, the **Settings** gear next to Close opens **Phone remote**. Choose **Generate access
+code** to pair a phone, see the code's remaining time, or view phones already paired. Generating a
+code requires an internet connection. Back or Escape returns to the audio/device panel.
+
 ## The panel
 
 | Section | What you can do |
@@ -157,8 +161,13 @@ The **Xdeck Remote** app makes a phone (Android or iPhone) a remote for the PC, 
    Several PCs can be paired (the PC name at the top switches between them).
 
 The PC is found by the network it is on (the same public address), and only someone looking at its
-screen can read the code. For a PC on another network: right-click the Xdeck gear › **Phone
-remote** › **Pair a phone…** and type that code in the app (**I already have a code**).
+screen can read the code. For a PC on another network, open the PC panel's **Settings** gear ›
+**Phone remote** › **Generate access code**, then choose **I already have a code** on the phone.
+The tray menu's **Phone remote** › **Pair a phone…** still generates the same kind of code.
+
+The phone opens a dedicated code screen with Back, a six-digit input and Pair directly below it.
+Complete the code and select **Pair** (or Enter); typing the sixth digit does not submit it by
+itself. Back returns to discovery, and existing paired PCs are kept.
 
 The app makes the phone:
 

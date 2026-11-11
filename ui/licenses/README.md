@@ -1,7 +1,8 @@
-# Third-party artwork
+# Third-party assets
 
 | Files | Source | License |
 |---|---|---|
+| `fonts/xdeck-brand-bold.woff2` | [Inter](https://github.com/rsms/inter), Google Fonts Latin subset, bold 700 | SIL Open Font License 1.1 (`fonts/OFL.txt`) |
 | `pads/xbox/*.svg` | [e7d/gamepad-viewer](https://github.com/e7d/gamepad-viewer) `templates/xbox-one` | MIT, Michaël "e7d" Ferrand |
 | `pads/dualsense.svg` | [daidr/dualsense-tester](https://github.com/daidr/dualsense-tester) `design/dualsense.svg` | MIT, Xuezhou Dai |
 | `pads/pro.svg`, `pads/joycon.svg`, `pads/xbox-icon.svg`, `pads/generic.svg`, `pads/dualsense-icon.svg` (and the model masks made from them, `pads/model/*.png`) | [AL2009man/Gamepad-Asset-Pack](https://github.com/AL2009man/Gamepad-Asset-Pack) `Connection Icon Pack/Controller Type/SVG` (hidden reference bitmaps removed) | MIT, Al. Lopez |

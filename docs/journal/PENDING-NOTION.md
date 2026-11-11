@@ -263,3 +263,72 @@ because an Xdeck journal destination has not been located.
 
 Estimated publication duration: 5 minutes. Actual: approximately 7 minutes, including the OAuth
 retry. The deployment itself took approximately 8 seconds; read-back verification took 3 seconds.
+
+## 2026-11-11 — Apply the approved pairing interface and shared brand
+
+Target: Projects / Xdeck / Journal; data source unresolved.
+
+- Date: 2026-11-11
+- Type: Fix
+- Area: UI
+- Status: Partial (desktop applied locally; PWA publication verification pending)
+- Summary: Apply the approved compact shared branding, desktop Settings code generation and
+  separate phone pairing-code screen with Back and adjacent Pair action.
+- Agent: Codex
+- Model: Session orchestrator for desktop, review and production; gpt-6.1-sol for PWA and tests
+- Repo / Branch: Skale-Club/xdeck / feat/approved-pairing-interface
+- Commits / PR: see Git history for this feature branch
+- Tests: Desktop panel 9 passed; PWA pairing 7 passed, including the 15-second timeout and retry.
+
+## Context
+
+The owner requested visual previews before implementation, revised typography and vertical
+alignment, requested a shared desktop/mobile icon and font, then approved with a smaller icon-name
+gap. The phone needs a dedicated code-entry step and the PC panel needs Settings to generate it.
+
+## What changed
+
+Use an 8px gap and the same app icon plus bundled Inter Bold 700 wordmark on both platforms. The
+original mockups used a Windows system font; the portable licensed font keeps the intended bold
+appearance consistent on Android, iOS and Windows. Include its SIL OFL license, avoid runtime font
+service requests, and precache it in service-worker v4.
+
+Desktop Settings reuses existing native remote-code and remote-cancel bridge commands. It displays
+code generation status, expiry, network failures and paired phone status, with Back/Escape/controller
+navigation. No native host or relay security code changes. PWA discovery and manual input now use
+separate stages; the code input and explicit Pair button remain adjacent. Back aborts discovery
+and stale responses cannot replace the current screen. Existing pairings and install hints remain.
+
+## How it was built
+
+One smaller worker owned only the PWA, service worker and PWA tests. The orchestrator owned desktop
+UI, shared assets, docs, final review and publication. Work was serialized on the Surface, with no
+development server, full build or browser capture. Desktop UI files were backed up and copied into
+the current user's installation; Xdeck restarted and installed asset hashes matched source.
+
+## Decisions and why
+
+Explicit Pair/Enter submission replaces automatic submission on the sixth digit. Generation and
+pairing have bounded waits, and actions cannot race an in-progress pairing. Existing paired phones
+are listed read-only in Settings; no removal action or authentication changes were introduced.
+
+## Tests and evidence
+
+Desktop tests cover Settings navigation, native bridge requests, offline/error/timeout/expiry states,
+safe phone names and existing device-section behavior. PWA tests cover manual/back/discovery,
+stale responses, explicit submission, failure recovery and preservation of saved PCs. Syntax and
+unique-ID checks passed. Physical phone keyboard rendering remains for owner device verification.
+The added 15-second /pair timeout test confirms that failure releases navigation, refocuses the
+code field, clears the timer and allows another explicit attempt. All 16 focused tests passed.
+
+## Not done / risks
+
+Official Windows installer publication still needs the original signing key from the home PC.
+The local Surface panel can use the existing host without recompilation. No new key was generated.
+The installed phone page must be reopened to load the new document; pairings do not need resetting.
+
+## Next
+
+Publish the PWA under the existing production authorization, verify static asset hashes and relay
+read-only responses, then record the deployment result here. Sync this entry when an Xdeck Notion
+journal destination is available.

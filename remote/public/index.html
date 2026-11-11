@@ -18,6 +18,7 @@
      encrypted here (ECDH P-256 with the PC's key, then AES-CBC + HMAC-SHA256); the relay in
      between only passes it on. Several PCs can be paired; the header switches between them. -->
 <style>
+  @font-face { font-family: "Xdeck Brand"; src: url('/fonts/xdeck-brand-bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
   :root {
     --bg: #1f1f22; --card: #2c2c2f; --hot: #38383c; --off: #3a3a3e; --text: #f2f2f4; --dim: #a0a0a8;
     --accent: #0a84ff; --green: #34c759; --red: #ff453a; --amber: #ffb340;
@@ -28,7 +29,7 @@
     font: 15px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
   body { display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 10px; padding: calc(12px + var(--safe-t)) 16px 8px; }
-  .gear { width: 22px; height: 22px; color: var(--accent); flex: none; }
+  .gear { width: 22px; height: 22px; border-radius: 6px; flex: none; }
   .pcbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--text);
     font: 650 17px -apple-system, "Segoe UI", sans-serif; padding: 0; text-align: left; }
   .pcbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -78,23 +79,36 @@
   .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; margin: 0; }
 
   /* pairing */
-  #pair { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: none; flex-direction: column; align-items: center;
+  [hidden] { display: none !important; }
+  #pair { position: fixed; inset: 0; height: var(--pair-viewport, 100%); z-index: 10; background: var(--bg); display: none; flex-direction: column; align-items: center;
     padding: calc(24px + var(--safe-t)) 24px calc(24px + var(--safe-b)); overflow-y: auto; text-align: center; }
   #pair.on { display: flex; }
-  .pair-content { width: 100%; max-width: 360px; margin-block: auto; flex: none; display: flex; flex-direction: column; align-items: center; gap: 18px; }
-  .pair-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 26px; font-weight: 700; }
-  #pair .logo { width: 72px; height: 72px; border-radius: 18px; }
-  #pair h1 { margin: 0; font-size: 24px; }
-  #pair p { margin: 0; color: var(--dim); max-width: 330px; }
-  .steps { text-align: left; color: var(--dim); font-size: 14px; max-width: 330px; padding-left: 20px; margin: 0; }
-  .steps li { margin: 4px 0; }
-  .steps b { color: var(--text); }
+  .pair-content { width: 100%; max-width: 360px; margin-block: auto; flex: none; display: flex; flex-direction: column; align-items: center; }
+  .pair-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; font: 700 24px/1 "Xdeck Brand", -apple-system, "Segoe UI", sans-serif; }
+  .pair-brand span { line-height: 1; }
+  #pair .logo { width: 44px; height: 44px; border-radius: 11px; }
+  #pair h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -.02em; }
+  #pair p { margin: 12px 0 0; color: var(--dim); max-width: 330px; font-size: 14px; line-height: 21px; }
+  .pair-stage { width: 100%; display: flex; flex-direction: column; align-items: center; }
+  #pairLead { max-width: 290px !important; }
+  #findBtn { margin-top: 28px; }
+  #pair .quiet { border: 0; background: none; color: var(--dim); font: 400 14px/21px -apple-system, "Segoe UI", sans-serif; padding: 0 8px; min-height: 36px; cursor: pointer; }
+  #haveCode { margin-top: 26px; }
+  #pairBack { align-self: flex-start; margin: 0 0 24px -8px; color: var(--text); }
+  #pair.code-stage .pair-content { padding-top: 48px; }
+  #pairBack { position: absolute; top: calc(20px + var(--safe-t)); left: 24px; }
+  #pairForm { width: 100%; max-width: 330px; display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
   .code { width: 100%; max-width: 330px; height: 64px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); text-align: center;
     font: 700 32px ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .18em; outline: none; user-select: text; -webkit-user-select: text; }
   .code::placeholder { color: #4a4a50; }
   .code:focus { box-shadow: inset 0 0 0 2px var(--accent); }
-  #pairErr { color: var(--red); min-height: 18px; font-size: 13.5px; }
-  #pair .btn { width: 100%; max-width: 330px; flex: none; }
+  #pairErr { color: var(--red); font-size: 13.5px; line-height: 20px; margin-top: 16px; }
+  #pairErr:empty { display: none; }
+  #pair .btn { width: 100%; max-width: 330px; min-height: 54px; flex: none; }
+  #pairExtras { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  #pairExtras:has(> :not([hidden])) { margin-top: 24px; }
+  #pairExtras .hint { margin: 0; font-size: 13px; }
+  @media (max-height: 560px) { #pair.code-stage .pair-content { padding-top: 44px; } #pair.code-stage .pair-brand { margin-bottom: 20px; } }
   .hint { font-size: 13px; color: var(--dim); max-width: 330px; }
 
   /* PC menu */
@@ -111,7 +125,7 @@
 </head>
 <body>
 <header>
-  <svg class="gear" viewBox="0 0 32 32"><path fill="currentColor" fill-rule="evenodd" d="M13.3 2h5.4l.8 3.6 2.4 1 3.1-2 3.8 3.8-2 3.1 1 2.4 3.6.8v5.4l-3.6.8-1 2.4 2 3.1-3.8 3.8-3.1-2-2.4 1-.8 3.6h-5.4l-.8-3.6-2.4-1-3.1 2-3.8-3.8 2-3.1-1-2.4L2 18.7v-5.4l3.6-.8 1-2.4-2-3.1 3.8-3.8 3.1 2 2.4-1zM16 11.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4z"/></svg>
+  <img class="gear" src="/icon-192.png" alt="Xdeck">
   <button class="pcbtn" id="pcBtn"><span id="pcName">Xdeck</span><svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <span class="status" id="status"><span class="dot"></span><span id="statusText">Connecting…</span></span>
 </header>
@@ -220,22 +234,29 @@
 <div id="menu"><div class="sheet" id="sheet"></div></div>
 
 <div id="pair">
+  <button class="quiet" id="pairBack" hidden type="button">‹ Back</button>
   <div class="pair-content">
     <div class="pair-brand"><img class="logo" src="/icon-192.png" alt=""><span>Xdeck</span></div>
-    <h1>Connect to your PC</h1>
-    <p id="pairLead">Keep the phone on the same Wi-Fi as the PC, with Xdeck running.</p>
-    <button class="btn accent" id="findBtn">Find my PC</button>
-    <div id="codeStep" style="display:none; width:100%; max-width:330px; flex-direction:column; align-items:center; gap:14px">
-      <p id="codeLead">Type the code that appeared on the PC:</p>
-      <input class="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
+    <div class="pair-stage" id="choiceStep">
+      <h1>Connect to your PC</h1>
+      <p id="pairLead">Keep Xdeck running on your PC.<br>Connect both devices to the same Wi-Fi.</p>
+      <button class="btn accent" id="findBtn">Find my PC</button>
+      <button class="quiet" id="haveCode" type="button">I already have a code</button>
     </div>
-    <div id="pairErr"></div>
-    <button class="btn accent" id="pairBtn" disabled style="display:none">Pair</button>
-    <p class="hint" id="manualHint" style="display:none">PC on another network? On the PC, right-click the Xdeck gear in the tray › <b>Phone remote</b> › <b>Pair a phone…</b> and type that code here.</p>
-    <button class="btn" id="haveCode" style="background:none;color:var(--dim);min-height:36px">I already have a code</button>
-    <button class="btn" id="installBtn" style="display:none">Install the app</button>
-    <p class="hint" id="iosHint" style="display:none">To keep it on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
-    <button class="btn" id="pairCancel" style="display:none">Cancel</button>
+    <div class="pair-stage" id="codeStep" hidden>
+      <h1>Enter pairing code</h1>
+      <p id="codeLead">Type the code that appeared on the PC:</p>
+      <form id="pairForm">
+        <input class="code" id="code" inputmode="numeric" pattern="[0-9]{3} ?[0-9]{3}" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code" aria-describedby="codeLead pairErr" enterkeyhint="go">
+        <button class="btn accent" id="pairBtn" disabled type="submit">Pair</button>
+      </form>
+    </div>
+    <div id="pairErr" role="status" aria-live="polite"></div>
+    <div id="pairExtras">
+      <button class="btn" id="installBtn" hidden>Install the app</button>
+      <p class="hint" id="iosHint" hidden>To keep it on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+      <button class="quiet" id="pairCancel" hidden>Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -340,70 +361,114 @@ window.addEventListener("online", () => { if (!ws) connect(); });
 
 // ------------------------------------------------------------ pairing
 const codeBox = $("code");
-let installEvent = null;
+let installEvent = null, pairStage = "choice", pairCancellable = false;
+let discoveryGeneration = 0, discoveryController = null;
 function codeValue() { return codeBox.value.replace(/\D/g, ""); }
+function cancelDiscovery() {
+  discoveryGeneration++;
+  if (discoveryController) discoveryController.abort();
+  discoveryController = null;
+}
+function updateInstallHints() {
+  const standalone = !!(matchMedia("(display-mode: standalone)").matches || navigator.standalone);
+  $("iosHint").hidden = !(/iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone);
+  $("installBtn").hidden = !installEvent || standalone;
+}
 function showPair(cancellable) {
+  if (pairing) return;
+  cancelDiscovery();
+  pairCancellable = !!(cancellable && pcs.length);
+  pairStage = "choice";
   $("pair").classList.add("on");
-  $("pairCancel").style.display = cancellable && pcs.length ? "" : "none";
+  $("pair").classList.remove("code-stage");
+  $("pairCancel").hidden = !pairCancellable;
+  $("pairBack").hidden = true;
+  $("choiceStep").hidden = false;
+  $("pairExtras").hidden = false;
   $("pairErr").textContent = "";
   codeBox.value = "";
   $("pairBtn").disabled = true;
-  $("pairBtn").style.display = "none";
-  $("codeStep").style.display = "none";
-  $("manualHint").style.display = "none";
-  $("haveCode").style.display = "";
-  $("findBtn").style.display = "";
+  $("codeStep").hidden = true;
   $("findBtn").disabled = false;
   $("findBtn").textContent = "Find my PC";
-  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
-  $("iosHint").style.display = /iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone ? "" : "none";
-  $("installBtn").style.display = installEvent && !standalone ? "" : "none";
+  codeBox.blur();
+  $("pair").scrollTop = 0;
+  updateInstallHints();
 }
 
 function showCodeStep(lead) {
+  if (pairing) return;
+  cancelDiscovery();
+  pairStage = "code";
+  $("pair").classList.add("code-stage");
+  $("choiceStep").hidden = true;
+  $("pairExtras").hidden = true;
+  $("pairBack").hidden = false;
   $("codeLead").textContent = lead;
-  $("codeStep").style.display = "flex";
-  $("pairBtn").style.display = "";
-  $("haveCode").style.display = "none";
-  setTimeout(() => codeBox.focus(), 50);
+  $("codeStep").hidden = false;
+  $("pairErr").textContent = "";
+  codeBox.value = "";
+  $("pairBtn").disabled = true;
+  codeBox.focus({ preventScroll: true });
 }
 
 // "Find my PC": every Xdeck PC on this network shows a code on its screen; type the one you see.
 $("findBtn").addEventListener("click", async () => {
+  if (pairing || pairStage !== "choice") return;
+  cancelDiscovery();
+  const request = discoveryGeneration;
+  discoveryController = new AbortController();
   const b = $("findBtn");
   b.disabled = true;
   b.textContent = "Looking for your PC…";
   $("pairErr").textContent = "";
   try {
-    const r = await fetch("/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: deviceName() }) });
+    const r = await fetch("/discover", { method: "POST", signal: discoveryController.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ name: deviceName() }) });
     const j = await r.json().catch(() => ({}));
+    if (request !== discoveryGeneration) return;
     if (!r.ok) throw new Error(j.error || "Could not look for the PC. Try again.");
     if (j.pcs && j.pcs.length) {
-      b.style.display = "none";
       showCodeStep(j.pcs.length === 1 ? `A code appeared on ${j.pcs[0]}. Type it here:` : `A code appeared on ${j.pcs.join(" and ")}. Type the one on your PC:`);
     } else {
       $("pairErr").textContent = "No PC with Xdeck found on this Wi-Fi. Check that the PC is on, with Xdeck running, on the same network.";
-      $("manualHint").style.display = "";
-      showCodeStep("Or type a code from the PC:");
       b.textContent = "Try again";
     }
   } catch (e) {
+    if (request !== discoveryGeneration || e.name === "AbortError") return;
     $("pairErr").textContent = e.message === "Failed to fetch" ? "No internet connection." : e.message;
     b.textContent = "Try again";
   } finally {
-    b.disabled = false;
+    if (request === discoveryGeneration) { b.disabled = false; discoveryController = null; }
   }
 });
-$("haveCode").addEventListener("click", () => { $("manualHint").style.display = ""; showCodeStep("Type the code from the PC:"); });
-// digits only, shown as "123 456"; pairs as soon as all six are in
+$("haveCode").addEventListener("click", () => showCodeStep("Enter the 6-digit code shown in Xdeck on your PC."));
+$("pairBack").addEventListener("click", () => { if (!pairing) { showPair(pairCancellable); $("haveCode").focus(); } });
+// Digits only, shown as "123 456". Submission always requires Pair or Enter.
 codeBox.addEventListener("input", () => {
+  if (pairing) return;
   const d = codeValue().slice(0, 6);
   codeBox.value = d.length > 3 ? d.slice(0, 3) + " " + d.slice(3) : d;
   $("pairBtn").disabled = d.length !== 6;
-  if (d.length === 6) pair();
 });
-$("pairBtn").addEventListener("click", pair);
-$("pairCancel").addEventListener("click", () => $("pair").classList.remove("on"));
+$("pairForm").addEventListener("submit", (e) => { e.preventDefault(); pair(); });
+$("pairCancel").addEventListener("click", () => {
+  if (pairing || !pairCancellable) return;
+  cancelDiscovery();
+  $("pair").classList.remove("on");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("pair").classList.contains("on") && pairStage === "code" && !pairing) {
+    e.preventDefault(); $("pairBack").click();
+  }
+});
+// Resize the existing surface for the keyboard; never replace the focused input.
+function updatePairViewport() {
+  if (!window.visualViewport) return;
+  $("pair").style.setProperty("--pair-viewport", window.visualViewport.height + "px");
+  if (pairStage === "code" && document.activeElement === codeBox) $("pairForm").scrollIntoView({ block: "nearest" });
+}
+if (window.visualViewport) window.visualViewport.addEventListener("resize", updatePairViewport);
+updatePairViewport();
 
 function deviceName() {
   const ua = navigator.userAgent;
@@ -415,16 +480,25 @@ function deviceName() {
 
 let pairing = false;
 async function pair() {
-  if (pairing || codeValue().length !== 6) return;
+  if (pairing || pairStage !== "code" || codeValue().length !== 6) return;
+  const code = codeValue();
   pairing = true;
+  codeBox.disabled = true;
+  $("pairBack").disabled = true;
+  $("pairCancel").disabled = true;
   $("pairBtn").disabled = true;
+  $("pairBtn").textContent = "Pairing…";
   $("pairErr").textContent = "";
+  const controller = new AbortController();
+  let pairTimer = 0, timedOut = false;
   try {
     const kp = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
     const pub = b64(await crypto.subtle.exportKey("raw", kp.publicKey));
     const priv = await crypto.subtle.exportKey("jwk", kp.privateKey);
-    const r = await fetch("/pair", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: codeValue(), pub, name: deviceName() }) });
+    pairTimer = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
+    const r = await fetch("/pair", { method: "POST", signal: controller.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ code, pub, name: deviceName() }) });
     const j = await r.json().catch(() => ({}));
+    if (timedOut) throw new Error("Pairing timed out.");
     if (!r.ok) throw new Error(j.error || "Could not pair. Try again.");
     const entry = { pc: j.pc, phone: j.phone, token: j.token, pcPub: j.pcPub, pcName: j.pcName, priv };
     pcs = pcs.filter((p) => p.pc !== entry.pc).concat([entry]);
@@ -435,17 +509,22 @@ async function pair() {
     vibrate(20);
     connect();
   } catch (e) {
-    $("pairErr").textContent = e.message === "Failed to fetch" ? "No internet connection." : e.message;
+    $("pairErr").textContent = timedOut ? "Pairing timed out. Check your connection and try the code again." : e.message === "Failed to fetch" ? "No internet connection." : e.message;
     codeBox.value = "";
-    codeBox.focus();
     $("pairBtn").disabled = true;
   } finally {
+    clearTimeout(pairTimer);
     pairing = false;
+    codeBox.disabled = false;
+    $("pairBack").disabled = false;
+    $("pairCancel").disabled = false;
+    $("pairBtn").textContent = "Pair";
+    if ($("pair").classList.contains("on") && pairStage === "code") codeBox.focus({ preventScroll: true });
   }
 }
 
-window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; if ($("pair").classList.contains("on")) $("installBtn").style.display = ""; });
-$("installBtn").addEventListener("click", async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $("installBtn").style.display = "none"; });
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; updateInstallHints(); });
+$("installBtn").addEventListener("click", async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; updateInstallHints(); });
 
 // ------------------------------------------------------------ PC menu: switch, add, remove
 $("pcBtn").addEventListener("click", () => {

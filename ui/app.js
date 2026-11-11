@@ -18,7 +18,8 @@ const $app = document.getElementById("app");
 
 let state = { outs: [], mics: [], pads: [], defOut: null, defMic: null, accent: "#0078d4" };
 let levels = {};
-let view = "panel";     // panel | tester
+let view = "panel";     // panel | tester | settings
+let requestingCode = false, codeRequestTimer = 0, codeRequestError = "";
 let expanded = 0;       // 0 none, 1 outputs, 2 microphones
 let testing = null;     // pad under test
 let padMode = false;    // a controller is driving the panel: show the focus ring and the button help
@@ -201,7 +202,7 @@ function ringHtml(d) {
 }
 
 function panelHtml() {
-  let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
+  let h = `<div class="view panel"><header><img class="brand-icon" src="brands/xdeck-app.png" alt=""><h1 class="brand-name">Xdeck</h1><button class="icon-btn" data-act="settings" data-nav="settings" title="Settings" aria-label="Settings">${I.gear}</button><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
   if (state.pads.length) h += `<h2>Controllers</h2>`;
@@ -228,10 +229,9 @@ function panelHtml() {
 }
 
 // ------------------------------------------------------------ phone remote
-// The Xdeck Remote app (xdeck.skale.club) is the remote; pairing and removing phones live in the
-// tray menu. The panel only shows the 6-digit code while one is good.
+// The Xdeck Remote app (xdeck.skale.club) pairs through Settings or the existing tray menu.
 let codeDeadline = 0, codeTimer = 0;
-// Nothing in the panel, except while a pairing code (tray menu › Pair a phone…) is on show.
+// Codes requested by a phone or the tray menu remain visible in the main panel too.
 function remoteHtml() {
   const r = state.remote;
   if (!r || !r.code) return "";
@@ -244,6 +244,48 @@ function remoteHtml() {
         <div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div>
         <button class="upd-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel</button>
       </div></div>`;
+}
+
+function settingsHtml() {
+  const r = state.remote || {};
+  const hasCode = !!r.code;
+  const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
+  const phones = r.phones || [];
+  let h = `<div class="view panel settings"><header><button class="icon-btn" data-act="back" data-nav="back" title="Back" aria-label="Back">${I.back}</button><h1>Settings</h1><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>
+    <h2>Phone remote</h2><p class="settings-lead">Control this PC with your phone.</p>
+    <div class="remote-settings"><h3>Connect your phone</h3>
+      <p>Open <b>xdeck.skale.club</b> on your phone and choose <b>I already have a code</b>.</p>
+      <button class="upd-btn go generate-code" data-act="remote-code" data-nav="remote-code" ${!r.online || requestingCode ? "disabled" : ""}>${requestingCode ? "Generating code…" : hasCode ? "Generate new code" : "Generate access code"}</button>
+      <div class="settings-code" aria-live="polite">${hasCode ? esc(r.code.slice(0, 3)) + " " + esc(r.code.slice(3)) : "— — —  — — —"}</div>
+      ${hasCode ? `<div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div><button class="link-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel code</button>` : `<p class="code-placeholder">Your code will appear here</p>`}
+    </div>`;
+  if (codeRequestError || r.error) h += `<p class="remote-status error" role="status">${esc(codeRequestError || r.error)}</p>`;
+  else h += `<p class="remote-status" role="status">${r.online ? "Works over Wi-Fi or mobile data." : "Waiting for an internet connection…"}</p>`;
+  if (phones.length) {
+    h += `<h2>Paired phones</h2><div class="phone-list">`;
+    for (const phone of phones)
+      h += `<div class="phone-row"><span class="pdot${phone.online ? " on" : ""}"></span><span class="pnm">${esc(phone.name || "Phone")}</span><span class="phone-state">${phone.online ? "Connected" : "Offline"}</span></div>`;
+    h += `</div>`;
+  }
+  return h + `</div>`;
+}
+
+function openSettings() {
+  view = "settings"; expanded = 0; testing = null; focusKey = null;
+  render();
+}
+
+function requestCode() {
+  if (!state.remote || !state.remote.online || requestingCode) return;
+  requestingCode = true; codeRequestError = "";
+  send({ type: "remote-code" });
+  render();
+  clearTimeout(codeRequestTimer);
+  codeRequestTimer = setTimeout(() => {
+    requestingCode = false;
+    codeRequestError = "Could not get a code. Try again.";
+    if (view === "settings") render();
+  }, 10000);
 }
 
 // the pairing code's countdown, without redrawing the panel
@@ -651,6 +693,7 @@ function render() {
     }
   }
   if (view === "panel") $app.innerHTML = panelHtml();
+  else if (view === "settings") $app.innerHTML = settingsHtml();
   applyFocus();
   updateMeters();
   postSize();
@@ -659,12 +702,12 @@ function render() {
 // ------------------------------------------------------------ controller navigation
 // The host turns any controller's D-pad / left stick and face buttons into {type:"pad"} messages
 // while the panel is open. Everything the mouse can do here, the controller can do too.
-const navItems = () => [...document.querySelectorAll(".panel [data-nav]")];
+const navItems = () => [...document.querySelectorAll(".panel [data-nav]")].filter((el) => !el.disabled);
 
 function applyFocus() {
   document.body.classList.toggle("pad-mode", padMode);
   document.querySelectorAll(".nav-focus").forEach((e) => e.classList.remove("nav-focus"));
-  if (!padMode || view !== "panel") return;
+  if (!padMode || (view !== "panel" && view !== "settings")) return;
   const items = navItems();
   if (!items.length) return;
   let el = items.find((e) => e.dataset.nav === focusKey);
@@ -680,7 +723,7 @@ function openTester(key) {
   if (testing) { view = "tester"; lastStamp = 0; lastChange = 0; axisRest = {}; axisSeen = new Set(); render(); }
 }
 
-function backToPanel() { view = "panel"; testing = null; render(); }
+function backToPanel() { view = "panel"; testing = null; focusKey = "settings"; render(); }
 
 // The active device of a section, its list, and the next / previous one.
 function stepDevice(sec, dir) {
@@ -735,7 +778,8 @@ function onPad(btn) {
       break;
     }
     case "b":
-      if (expanded) { focusKey = "head-" + expanded; expanded = 0; render(); }
+      if (view === "settings") backToPanel();
+      else if (expanded) { focusKey = "head-" + expanded; expanded = 0; render(); }
       else send({ type: "close" });
       break;
   }
@@ -774,13 +818,14 @@ $app.addEventListener("click", (e) => {
   if (!t) return;
   const act = t.dataset.act;
   if (act === "close") { send({ type: "close" }); }
+  else if (act === "settings") openSettings();
   else if (act === "mute") { send({ type: "mute", id: t.dataset.id, m: t.dataset.m === "1" }); }
   else if (act === "toggle") { expanded = expanded === +t.dataset.sec ? 0 : +t.dataset.sec; render(); }
   else if (act === "select") { send({ type: "select", id: t.dataset.id }); expanded = 0; render(); }
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
   else if (act === "update") send({ type: "update" });
-  else if (act === "remote-code") send({ type: "remote-code" });
+  else if (act === "remote-code") requestCode();
   else if (act === "remote-cancel") send({ type: "remote-cancel" });
   else if (act === "remote-unpair") send({ type: "remote-unpair", id: t.dataset.id });
   else if (act === "check") { send({ type: "check" }); state.upd = { ...state.upd, state: "checking", error: null }; updateUpdates(); }
@@ -792,14 +837,17 @@ $app.addEventListener("click", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (view === "tester") backToPanel();
+  if (view === "tester" || view === "settings") backToPanel();
   else send({ type: "close" });
 });
 
 if (host) host.addEventListener("message", (e) => {
   const m = e.data;
   if (m.type === "state") {
-    if (m.remote && m.remote.code) codeDeadline = Date.now() + (m.remote.codeLeft || 0);
+    if (m.remote && m.remote.code) { codeDeadline = Date.now() + (m.remote.codeLeft || 0); codeRequestError = ""; }
+    if (requestingCode && m.remote && (m.remote.code || m.remote.error || !m.remote.online)) {
+      requestingCode = false; codeRequestError = ""; clearTimeout(codeRequestTimer);
+    }
     if (dragging) pendingState = m; else { state = m; render(); }
     tickCode();
   }

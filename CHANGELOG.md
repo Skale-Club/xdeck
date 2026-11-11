@@ -4,12 +4,17 @@
 
 - Center the phone pairing screen vertically, keep overflow scrollable, and show the Xdeck name
   below its icon. Refresh the offline shell cache for the updated screen.
+- Add a dedicated code-entry step with Back and an adjacent Pair button. Cancel stale discovery
+  responses when navigating, require explicit confirmation after six digits and preserve paired PCs.
+- Use the same bundled bold wordmark font and app icon as the Windows panel, with a compact 8px gap.
 
 ## 0.7.5 — 2026-11-11
 
 - Hide audio output, microphone and controller sections when no devices are connected.
 - Give connected peripherals their own Devices section, display their names, and omit unidentified
   USB entries. Surface Type Cover uses a keyboard icon instead of its touchpad's mouse icon.
+- Add Settings to the panel with code generation, countdown, connection feedback and paired phones.
+  Use the same app icon and bundled bold wordmark font as the phone remote.
 
 ## 0.7.4 — 2026-11-11
 
