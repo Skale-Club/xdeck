@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.4 — 2026-11-11
+
+- **Mice and keyboards on a Logitech receiver** (Unifying, Bolt, Lightspeed) show up by name with
+  their battery, instead of a "USB" circle for the receiver. Xdeck asks the receiver what is paired
+  to it and each device that is awake for its battery (Logitech's HID++), once a minute; a device
+  that is asleep keeps the battery it last reported.
+
 ## 0.7.3 — 2026-11-11
 
 - The tray gear gets a dot when an update is ready to install.

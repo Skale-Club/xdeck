@@ -1175,6 +1175,7 @@ static class Pads
             if (!SetupDiGetDeviceInstanceId(set, ref d, sb, sb.Capacity, out req)) continue;
             string id = sb.ToString().ToLowerInvariant();
             if (id.Contains("root_hub")) continue;
+            if (LogiReceivers.IsReceiver(id)) continue;   // its mice and keyboards show instead (LogiReceivers)
             bool wheel = false;
             foreach (string[] w in Wired) if (id.Contains(w[0])) wheel = true;
             if (wheel) continue;
@@ -1206,7 +1207,7 @@ static class Pads
         return fallback;
     }
 
-    static List<string> HidPaths()
+    public static List<string> HidPaths()
     {
         List<string> o = new List<string>();
         Guid g; HidD_GetHidGuid(out g);
@@ -1417,6 +1418,247 @@ static class Pads
             Battery = state == 2 ? 100 : Math.Min(100, level * 10 + 5);
             Charging = state == 1;
         }
+    }
+}
+
+// ---------------------------------------------------------------- Logitech receivers
+// A Unifying / Bolt / Lightspeed receiver shows Windows only itself. Xdeck asks it, in Logitech's
+// HID++ protocol, what is paired to it (register 0x2B5: kind and name, known even while the device
+// sleeps), and asks each device that is awake its name (feature 0x0005) and battery (0x1004 unified
+// battery, else 0x1000 battery status, else 0x1001 voltage). In the background, once a minute; a
+// sleeping device keeps the battery it last reported for half a day.
+static class LogiReceivers
+{
+    [StructLayout(LayoutKind.Sequential)]
+    struct HidpCaps
+    {
+        public ushort Usage, UsagePage, InputReportByteLength, OutputReportByteLength, FeatureReportByteLength;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 17)] public ushort[] Reserved;
+        public ushort NumberLinkCollectionNodes, NumberInputButtonCaps, NumberInputValueCaps, NumberInputDataIndices,
+                      NumberOutputButtonCaps, NumberOutputValueCaps, NumberOutputDataIndices,
+                      NumberFeatureButtonCaps, NumberFeatureValueCaps, NumberFeatureDataIndices;
+    }
+    [DllImport("hid.dll")] static extern bool HidD_GetPreparsedData(SafeFileHandle h, out IntPtr data);
+    [DllImport("hid.dll")] static extern bool HidD_FreePreparsedData(IntPtr data);
+    [DllImport("hid.dll")] static extern int HidP_GetCaps(IntPtr data, out HidpCaps caps);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern SafeFileHandle CreateFile(string n, uint access, uint share, IntPtr sa, uint disp, uint flags, IntPtr t);
+
+    // Logitech receivers: Unifying, Nano, Lightspeed, Bolt (c548)
+    static readonly string[] Pids = { "c52b", "c532", "c534", "c539", "c53a", "c53d", "c53f", "c541", "c545", "c547", "c548", "c54d" };
+    const byte SwId = 0x0A;
+
+    class Known { public int Battery = -1; public bool Charging; public string Name; public DateTime At; }
+    static readonly Dictionary<string, Known> known = new Dictionary<string, Known>();
+    public static volatile List<Device> Devices = new List<Device>();
+    static int busy;
+    static DateTime lastRun = DateTime.MinValue;
+
+    public static bool IsReceiver(string id)
+    {
+        string l = id.ToLowerInvariant();
+        if (!l.Contains("vid_046d")) return false;
+        foreach (string p in Pids) if (l.Contains("pid_" + p)) return true;
+        return false;
+    }
+
+    // From the device watch: ask again when it has been a minute (in the background).
+    public static void RefreshSoon()
+    {
+        if ((DateTime.Now - lastRun).TotalSeconds < 60) return;
+        if (Interlocked.Exchange(ref busy, 1) == 1) return;
+        lastRun = DateTime.Now;
+        Thread t = new Thread(delegate () { try { Probe(Pads.HidPaths()); } catch { } finally { Interlocked.Exchange(ref busy, 0); } });
+        t.IsBackground = true;
+        t.Start();
+    }
+
+    // one HID collection of a receiver's HID++ interface: short (7-byte) or long (20-byte) reports
+    class Col
+    {
+        public FileStream Fs;
+        Task<int> pending;
+        byte[] buf;
+        public byte[] Read(int ms)
+        {
+            if (pending == null) { buf = new byte[64]; try { pending = Fs.ReadAsync(buf, 0, buf.Length); } catch { return null; } }
+            try { if (!pending.Wait(Math.Max(1, ms))) return null; }
+            catch { pending = null; return null; }
+            int n = pending.Result;
+            pending = null;
+            return n > 0 ? buf : null;
+        }
+    }
+
+    class Receiver
+    {
+        public Col Short, Long;
+        public bool Bolt;
+        public string Key;
+
+        // HID++ 2.0 feature call on device idx, over long reports; null when it does not answer
+        public byte[] Ask(byte idx, byte feature, int function, params byte[] args)
+        {
+            byte[] req = new byte[20];
+            req[0] = 0x11; req[1] = idx; req[2] = feature; req[3] = (byte)((function << 4) | SwId);
+            Array.Copy(args, 0, req, 4, Math.Min(args.Length, 16));
+            try { Long.Fs.Write(req, 0, 20); } catch { return null; }
+            DateTime until = DateTime.Now.AddMilliseconds(400);
+            while (DateTime.Now < until)
+            {
+                byte[] r = Long.Read((int)(until - DateTime.Now).TotalMilliseconds);
+                if (r == null) return null;
+                if (r[0] != 0x11 || r[1] != idx) continue;
+                if (r[2] == 0xFF && r[3] == feature) return null;                     // HID++ 2.0 error
+                if (r[2] == feature && r[3] == req[3]) return r;
+            }
+            return null;
+        }
+
+        public byte FeatureIndex(byte idx, ushort feature)
+        {
+            byte[] r = Ask(idx, 0x00, 0, (byte)(feature >> 8), (byte)feature);
+            return r == null ? (byte)0 : r[4];
+        }
+
+        // HID++ 1.0 long-register read on the receiver (0x83); the answer comes as a long report
+        public byte[] Register(byte reg, byte p0, byte p1)
+        {
+            byte[] req = { 0x10, 0xFF, 0x83, reg, p0, p1, 0 };
+            try { Short.Fs.Write(req, 0, 7); } catch { return null; }
+            DateTime until = DateTime.Now.AddMilliseconds(300);
+            while (DateTime.Now < until)
+            {
+                byte[] r = Long.Read(50);
+                if (r != null && r[0] == 0x11 && r[1] == 0xFF && r[2] == 0x83 && r[3] == reg && r[4] == p0) return r;
+                byte[] e = Short.Read(10);
+                if (e != null && e[0] == 0x10 && e[1] == 0xFF && e[2] == 0x8F && e[3] == 0x83) return null;   // not paired
+            }
+            return null;
+        }
+    }
+
+    public static void Probe(List<string> hidPaths)
+    {
+        // the receiver's vendor (0xFF00) collections, grouped by its USB interface
+        Dictionary<string, Receiver> rx = new Dictionary<string, Receiver>();
+        List<FileStream> open = new List<FileStream>();
+        try
+        {
+            foreach (string path in hidPaths)
+            {
+                if (!IsReceiver(path)) continue;
+                SafeFileHandle h = CreateFile(path, 0xC0000000, 3, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero);   // read/write, overlapped
+                if (h.IsInvalid) continue;
+                HidpCaps caps = new HidpCaps();
+                IntPtr pre;
+                bool ok = HidD_GetPreparsedData(h, out pre);
+                if (ok) { ok = HidP_GetCaps(pre, out caps) == 0x110000; HidD_FreePreparsedData(pre); }
+                if (!ok || caps.UsagePage != 0xFF00 || (caps.OutputReportByteLength != 7 && caps.OutputReportByteLength != 20)) { h.Dispose(); continue; }
+                string l = path.ToLowerInvariant();
+                Match m = Regex.Match(l, @"hid#(vid_046d&pid_[0-9a-f]{4})[^#]*#([0-9a-f]+&[0-9a-f]+)&");
+                string key = m.Success ? m.Groups[1].Value + "-" + m.Groups[2].Value : l;
+                Receiver r;
+                if (!rx.TryGetValue(key, out r)) rx[key] = r = new Receiver { Bolt = l.Contains("pid_c548"), Key = "logi-" + key.Replace("&", "-") };
+                FileStream fs = new FileStream(h, FileAccess.ReadWrite, 1, true);
+                open.Add(fs);
+                if (caps.OutputReportByteLength == 7) r.Short = new Col { Fs = fs }; else r.Long = new Col { Fs = fs };
+            }
+
+            List<Device> list = new List<Device>();
+            foreach (Receiver r in rx.Values)
+            {
+                if (r.Short == null || r.Long == null) continue;
+                for (byte idx = 1; idx <= 6; idx++)
+                {
+                    Device d = Paired(r, idx);
+                    if (d != null) list.Add(d);
+                }
+            }
+            Devices = list;
+        }
+        finally
+        {
+            foreach (FileStream fs in open) try { fs.Dispose(); } catch { }
+        }
+    }
+
+    // What the receiver knows of slot idx (kind and name), with what the device says if awake.
+    static Device Paired(Receiver r, byte idx)
+    {
+        // pairing information: Unifying 0x20 + (idx-1), kind in its 8th byte; Bolt 0x50 + idx, kind in its 2nd
+        byte[] info = r.Register(0xB5, (byte)(r.Bolt ? 0x50 + idx : 0x20 + idx - 1), 0);
+        if (info == null) return null;
+        int kind = (r.Bolt ? info[5] : info[11]) & 0x0F;   // 1 keyboard, 2 mouse, 3 numpad, 8 trackball, 9 touchpad
+        // its name: Unifying 0x40 + (idx-1) (length, then the name); Bolt 0x60 + idx, part 1 (part, length, name)
+        string name = null;
+        byte[] n = r.Bolt ? r.Register(0xB5, (byte)(0x60 + idx), 1) : r.Register(0xB5, (byte)(0x40 + idx - 1), 0);
+        if (n != null) name = r.Bolt ? Ascii(n, 7, n[6]) : Ascii(n, 6, n[5]);
+        string glyph = kind == 1 || kind == 3 ? "keyboard" : kind == 2 || kind == 8 || kind == 9 ? "mouse" : "usb";
+        string key = r.Key + "-" + idx;
+        Known k;
+        lock (known) { if (!known.TryGetValue(key, out k)) known[key] = k = new Known(); }
+
+        Live(r, idx, k);   // the device itself, if it is awake
+        if (k.Name != null) name = k.Name;
+        bool fresh = (DateTime.Now - k.At).TotalHours < 12;
+        return new Device {
+            Key = key, Name = string.IsNullOrEmpty(name) ? (glyph == "keyboard" ? "Keyboard" : glyph == "mouse" ? "Mouse" : "Logitech device") : name,
+            Glyph = glyph, Conn = "Receiver", Battery = fresh ? k.Battery : -1, Charging = fresh && k.Charging, Connected = true };
+    }
+
+    static string Ascii(byte[] b, int start, int len)
+    {
+        StringBuilder sb = new StringBuilder();
+        for (int i = start; i < Math.Min(b.Length, start + len); i++) if (b[i] >= 32 && b[i] < 127) sb.Append((char)b[i]);
+        return sb.ToString().Trim();
+    }
+
+    static void Live(Receiver r, byte idx, Known k)
+    {
+        if (r.Ask(idx, 0x00, 1) == null) return;                                  // root ping: asleep or off
+        byte f = r.FeatureIndex(idx, 0x0005);
+        if (f != 0)
+        {
+            byte[] c = r.Ask(idx, f, 0);
+            int len = c == null ? 0 : c[4];
+            StringBuilder sb = new StringBuilder();
+            while (sb.Length < len)
+            {
+                byte[] part = r.Ask(idx, f, 1, (byte)sb.Length);
+                if (part == null) break;
+                for (int i = 4; i < 20 && sb.Length < len; i++) sb.Append((char)part[i]);
+            }
+            string nm = sb.ToString().Trim('\0', ' ');
+            if (nm.Length > 0) k.Name = nm;
+        }
+        int battery = -1;
+        bool charging = false;
+        if ((f = r.FeatureIndex(idx, 0x1004)) != 0)                               // unified battery
+        {
+            byte[] b = r.Ask(idx, f, 1);
+            if (b != null)
+            {
+                battery = b[4] > 0 ? b[4] : (b[5] & 8) != 0 ? 100 : (b[5] & 4) != 0 ? 60 : (b[5] & 2) != 0 ? 20 : (b[5] & 1) != 0 ? 5 : -1;
+                charging = b[6] == 1 || b[6] == 2;
+            }
+        }
+        else if ((f = r.FeatureIndex(idx, 0x1000)) != 0)                          // battery status
+        {
+            byte[] b = r.Ask(idx, f, 0);
+            if (b != null && b[4] > 0) { battery = b[4]; charging = b[6] >= 1 && b[6] <= 2; }
+        }
+        else if ((f = r.FeatureIndex(idx, 0x1001)) != 0)                          // battery voltage
+        {
+            byte[] b = r.Ask(idx, f, 0);
+            if (b != null)
+            {
+                int mv = (b[4] << 8) | b[5];
+                battery = (int)Math.Max(0, Math.Min(100, (mv - 3500) * 100.0 / (4100 - 3500)));
+                charging = (b[6] & 0x80) != 0;
+            }
+        }
+        if (battery >= 0) { k.Battery = battery; k.Charging = charging; k.At = DateTime.Now; }
     }
 }
 
@@ -4503,12 +4745,14 @@ class XdeckApp : Form
             foreach (Pad p in pads) all.Add(Device.Of(p));
             all.AddRange(Pads.Bluetooth());
             all.AddRange(Pads.Usb());
+            LogiReceivers.RefreshSoon();                 // asks the Logitech receivers once a minute
+            all.AddRange(LogiReceivers.Devices);
         }
         catch { return; }
         UpdateTrayText(pads);
         // the panel's Devices section: every wireless device, plus mice and keyboards on USB
         // (a wireless receiver), mice and keyboards first
-        List<Device> shown = all.FindAll(delegate (Device x) { return !x.Pad && (x.Conn == "Bluetooth" || x.Input); });
+        List<Device> shown = all.FindAll(delegate (Device x) { return !x.Pad && (x.Conn == "Bluetooth" || x.Conn == "Receiver" || x.Input); });
         string[] order = { "mouse", "keyboard", "headphones", "speaker", "mic" };
         shown.Sort(delegate (Device a, Device b)
         {
@@ -4523,6 +4767,8 @@ class XdeckApp : Form
         foreach (Device d in all)
         {
             if (!keys.Add(d.Key) || known == null || known.Contains(d.Key) || quiet) continue;
+            // paired to a Logitech receiver: always there, waking up is no news (low battery still is)
+            if (d.Conn == "Receiver") continue;
             // Back after a moment is no news: Bluetooth mice and keyboards drop out while they sleep,
             // USB devices start over. A controller turned off and on again is still announced.
             DateTime gone;
