@@ -925,7 +925,8 @@ class Device
 
     public static Device Of(Pad p)
     {
-        return new Device { Key = p.Mac, Name = p.Name, Glyph = "pad", Conn = p.Conn, Battery = p.Battery, Charging = p.Charging, Connected = true, Pad = true };
+        // the banner draws this model's own silhouette (Ui.IconBitmap)
+        return new Device { Key = p.Mac, Name = p.Name, Glyph = "pad:" + p.Kind, Conn = p.Conn, Battery = p.Battery, Charging = p.Charging, Connected = true, Pad = true };
     }
 }
 
@@ -2968,11 +2969,44 @@ static class Ui
         g.PixelOffsetMode = oldP;
     }
 
+    // The mask tools\Render-PadIcons.ps1 made from the controller artwork (white body, see-through
+    // details), tinted; null for a model without one (wheel, handbrake: the generic pad then).
+    static Bitmap PadModel(string model, int s, Color c)
+    {
+        using (Stream res = Assembly.GetExecutingAssembly().GetManifestResourceStream("pad-" + model + ".png"))
+        {
+            if (res == null) return null;
+            using (Image mask = Image.FromStream(res))
+            {
+                Bitmap bmp = new Bitmap(s, s, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                System.Drawing.Imaging.ColorMatrix cm = new System.Drawing.Imaging.ColorMatrix(new float[][] {
+                    new float[] { 0, 0, 0, 0, 0 }, new float[] { 0, 0, 0, 0, 0 }, new float[] { 0, 0, 0, 0, 0 },
+                    new float[] { 0, 0, 0, c.A / 255f, 0 }, new float[] { c.R / 255f, c.G / 255f, c.B / 255f, 0, 1 } });
+                using (System.Drawing.Imaging.ImageAttributes ia = new System.Drawing.Imaging.ImageAttributes())
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    ia.SetColorMatrix(cm);
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.DrawImage(mask, new Rectangle(0, 0, s, s), 0, 0, mask.Width, mask.Height, GraphicsUnit.Pixel, ia);
+                }
+                return bmp;
+            }
+        }
+    }
+
     public static Bitmap IconBitmap(string kind, int s, Color c)
     {
         string key = kind + ":" + s + ":" + c.ToArgb();
         Bitmap cached;
         if (iconCache.TryGetValue(key, out cached)) return cached;
+        // a controller of a known model: its own silhouette (src\res\pad-<kind>.png), in this colour
+        if (kind.StartsWith("pad:"))
+        {
+            Bitmap model = PadModel(kind.Substring(4), s, c);
+            if (model != null) { iconCache[key] = model; return model; }
+            kind = "pad";
+        }
         Bitmap raw = new Bitmap(s, s);
         using (Graphics g = Graphics.FromImage(raw))
         using (Brush fill = new SolidBrush(c))
@@ -4580,7 +4614,7 @@ static class Program
     // "Xdeck.exe --icons <file.png>" renders every icon (banner size and 4x) for a visual check.
     static void IconSheet(string file)
     {
-        string[] kinds = { "pad", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard" };
+        string[] kinds = { "pad", "pad:xbox", "pad:dualsense", "pad:switchpro", "pad:joycon", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard" };
         Color accent = Ui.Accent;
         Color ink = accent.GetBrightness() < 0.35f ? Color.White : accent;
         using (Bitmap bmp = new Bitmap(kinds.Length * 120 + 20, 220))

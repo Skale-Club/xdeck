@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 — 2026-11-11
+
+- The "Controller connected" banner (and the low-battery alert) shows the controller's own model:
+  Xbox, DualSense, Pro Controller or Joy-Cons, from the same artwork as the controller test
+  (`tools\Render-PadIcons.ps1` turns it into the masks in `src\res`).
+
 ## 0.7.0 — 2026-11-11
 
 - **Pairing starts on the phone**: in the Xdeck Remote app, **Find my PC** makes a 6-digit code

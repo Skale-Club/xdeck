@@ -14,6 +14,36 @@ static class MakeIcon
 {
     static int Main(string[] args)
     {
+        // MakeIcon --mask <in.png> <out.png>: a controller silhouette (black body, white details, on
+        // transparent) to a mask, white where the body is and see-through elsewhere (Render-PadIcons.ps1)
+        if (args.Length == 3 && args[0] == "--mask")
+        {
+            using (Bitmap src = new Bitmap(args[1]))
+            using (Bitmap dst = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb))
+            {
+                int minX = src.Width, minY = src.Height, maxX = -1, maxY = -1;
+                for (int y = 0; y < src.Height; y++)
+                    for (int x = 0; x < src.Width; x++)
+                    {
+                        Color c = src.GetPixel(x, y);
+                        float lum = (0.299f * c.R + 0.587f * c.G + 0.114f * c.B) / 255f;
+                        int a = (int)Math.Round(c.A * (1 - lum));
+                        dst.SetPixel(x, y, Color.FromArgb(a, 255, 255, 255));
+                        if (a > 8) { minX = Math.Min(minX, x); minY = Math.Min(minY, y); maxX = Math.Max(maxX, x); maxY = Math.Max(maxY, y); }
+                    }
+                if (maxX < 0) { Console.Error.WriteLine("empty image"); return 1; }
+                // trimmed to the drawing, centred in a square
+                int side = Math.Max(maxX - minX, maxY - minY) + 1;
+                using (Bitmap sq = new Bitmap(side, side, PixelFormat.Format32bppArgb))
+                {
+                    using (Graphics g = Graphics.FromImage(sq))
+                        g.DrawImage(dst, new Rectangle((side - (maxX - minX + 1)) / 2, (side - (maxY - minY + 1)) / 2, maxX - minX + 1, maxY - minY + 1),
+                            new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1), GraphicsUnit.Pixel);
+                    sq.Save(args[2], ImageFormat.Png);
+                }
+            }
+            return 0;
+        }
         // MakeIcon --png <dir>: the phone remote app's icons (remote\public)
         if (args.Length == 2 && args[0] == "--png")
         {
