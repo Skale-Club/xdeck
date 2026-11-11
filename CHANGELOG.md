@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — 2026-11-11
+
+- **Pairing starts on the phone**: in the Xdeck Remote app, **Find my PC** makes a 6-digit code
+  pop up on the screen of every Xdeck PC on the same network (the panel opens on it, with the
+  phone's name); type it in the app and it is paired. Nothing to do on the PC. The relay knows
+  which network a PC is on from where it connects (over IPv4 and IPv6). Tray menu › Phone remote ›
+  **Pair a phone…** remains for a PC on another network.
+
 ## 0.6.2 — 2026-11-11
 
 - The panel has no Phone remote section any more. Pairing moved to the tray menu: right-click the

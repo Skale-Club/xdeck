@@ -225,11 +225,11 @@ function remoteHtml() {
   const r = state.remote;
   if (!r || !r.code) return "";
   const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
-  return `<h2>Pair a phone</h2>
+  return `<h2>${r.from ? esc(r.from) + " wants to connect" : "Pair a phone"}</h2>
     <div class="remote-pair">
       <div class="remote-code">${esc(r.code.slice(0, 3))} ${esc(r.code.slice(3))}</div>
       <div class="remote-txt">
-        <div>On the phone, open <b>xdeck.skale.club</b> (install it as an app) and type this code.</div>
+        <div>${r.from ? "Type this code in the Xdeck app on the phone." : "On the phone, open <b>xdeck.skale.club</b> (install it as an app) and type this code."}</div>
         <div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div>
         <button class="upd-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel</button>
       </div></div>`;

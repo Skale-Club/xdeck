@@ -219,15 +219,17 @@
 
 <div id="pair">
   <img class="logo" src="/icon-192.png" alt="">
-  <h1>Pair with your PC</h1>
-  <ol class="steps">
-    <li>On the PC, right-click the <b>Xdeck</b> gear in the tray.</li>
-    <li>Choose <b>Phone remote › Pair a phone…</b></li>
-    <li>Type the 6-digit code it shows:</li>
-  </ol>
-  <input class="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
+  <h1>Connect to your PC</h1>
+  <p id="pairLead">Keep the phone on the same Wi-Fi as the PC, with Xdeck running.</p>
+  <button class="btn accent" id="findBtn">Find my PC</button>
+  <div id="codeStep" style="display:none; width:100%; max-width:330px; flex-direction:column; align-items:center; gap:14px">
+    <p id="codeLead">Type the code that appeared on the PC:</p>
+    <input class="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
+  </div>
   <div id="pairErr"></div>
-  <button class="btn accent" id="pairBtn" disabled>Pair</button>
+  <button class="btn accent" id="pairBtn" disabled style="display:none">Pair</button>
+  <p class="hint" id="manualHint" style="display:none">PC on another network? On the PC, right-click the Xdeck gear in the tray › <b>Phone remote</b> › <b>Pair a phone…</b> and type that code here.</p>
+  <button class="btn" id="haveCode" style="background:none;color:var(--dim);min-height:36px">I already have a code</button>
   <button class="btn" id="installBtn" style="display:none">Install the app</button>
   <p class="hint" id="iosHint" style="display:none">To keep it on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
   <button class="btn" id="pairCancel" style="display:none">Cancel</button>
@@ -342,11 +344,53 @@ function showPair(cancellable) {
   $("pairErr").textContent = "";
   codeBox.value = "";
   $("pairBtn").disabled = true;
+  $("pairBtn").style.display = "none";
+  $("codeStep").style.display = "none";
+  $("manualHint").style.display = "none";
+  $("haveCode").style.display = "";
+  $("findBtn").style.display = "";
+  $("findBtn").disabled = false;
+  $("findBtn").textContent = "Find my PC";
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   $("iosHint").style.display = /iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone ? "" : "none";
   $("installBtn").style.display = installEvent && !standalone ? "" : "none";
+}
+
+function showCodeStep(lead) {
+  $("codeLead").textContent = lead;
+  $("codeStep").style.display = "flex";
+  $("pairBtn").style.display = "";
+  $("haveCode").style.display = "none";
   setTimeout(() => codeBox.focus(), 50);
 }
+
+// "Find my PC": every Xdeck PC on this network shows a code on its screen; type the one you see.
+$("findBtn").addEventListener("click", async () => {
+  const b = $("findBtn");
+  b.disabled = true;
+  b.textContent = "Looking for your PC…";
+  $("pairErr").textContent = "";
+  try {
+    const r = await fetch("/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: deviceName() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Could not look for the PC. Try again.");
+    if (j.pcs && j.pcs.length) {
+      b.style.display = "none";
+      showCodeStep(j.pcs.length === 1 ? `A code appeared on ${j.pcs[0]}. Type it here:` : `A code appeared on ${j.pcs.join(" and ")}. Type the one on your PC:`);
+    } else {
+      $("pairErr").textContent = "No PC with Xdeck found on this Wi-Fi. Check that the PC is on, with Xdeck running, on the same network.";
+      $("manualHint").style.display = "";
+      showCodeStep("Or type a code from the PC:");
+      b.textContent = "Try again";
+    }
+  } catch (e) {
+    $("pairErr").textContent = e.message === "Failed to fetch" ? "No internet connection." : e.message;
+    b.textContent = "Try again";
+  } finally {
+    b.disabled = false;
+  }
+});
+$("haveCode").addEventListener("click", () => { $("manualHint").style.display = ""; showCodeStep("Type the code from the PC:"); });
 // digits only, shown as "123 456"; pairs as soon as all six are in
 codeBox.addEventListener("input", () => {
   const d = codeValue().slice(0, 6);
@@ -390,6 +434,7 @@ async function pair() {
     $("pairErr").textContent = e.message === "Failed to fetch" ? "No internet connection." : e.message;
     codeBox.value = "";
     codeBox.focus();
+    $("pairBtn").disabled = true;
   } finally {
     pairing = false;
   }

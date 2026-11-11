@@ -2369,7 +2369,9 @@ static class Remote
     public static volatile bool Online;         // connected to the relay
     public static volatile string Error;        // why not, when it keeps failing
     public static volatile string Code;         // the pairing code on show, or null
+    public static volatile string CodeFrom;     // the phone that asked for it ("Find my PC"), or null
     public static DateTime CodeUntil;
+    public static Action PairRequested;         // set by the app: a phone asked, open the panel on the code
     public static Action<Action> OnUi;          // set by the app: runs on the UI thread (audio)
     public static Action Changed;               // set by the app: on / online / code / phones changed
     public static Action<string> Paired;        // set by the app: a phone (its name) just paired
@@ -2516,6 +2518,9 @@ static class Remote
                     Notify();
                     SendRaw(new Dictionary<string, object> { { "t", "hello" }, { "name", Environment.MachineName }, { "pub", RemoteCrypto.PublicRaw(key) } });
                     if (Environment.GetEnvironmentVariable("XDECK_RELAY") != null) AskCode();   // a test copy pairs without the panel
+                    Thread report = new Thread(ReportNetwork);
+                    report.IsBackground = true;
+                    report.Start();
                     Receive(c);
                 }
                 catch (Exception ex)
@@ -2531,6 +2536,39 @@ static class Remote
             if (!On) break;
             wake.WaitOne(backoff);
             backoff = Math.Min(backoff * 2, 30000);
+        }
+    }
+
+    // A phone finds this PC by the network it is on: the relay saw the WebSocket come from one IP
+    // family; report over the other too (IPv4 and IPv6), since the phone may use either.
+    static void ReportNetwork()
+    {
+        Uri relay;
+        if (!Uri.TryCreate(Relay, UriKind.Absolute, out relay) || relay.Scheme != "wss") return;
+        string path = "/ip?id=" + pcId + "&secret=" + Uri.EscapeDataString(secret);
+        IPAddress[] all;
+        try { all = Dns.GetHostAddresses(relay.Host); } catch { return; }
+        foreach (AddressFamily family in new AddressFamily[] { AddressFamily.InterNetwork, AddressFamily.InterNetworkV6 })
+        {
+            IPAddress addr = Array.Find(all, delegate (IPAddress a) { return a.AddressFamily == family; });
+            if (addr == null) continue;
+            try
+            {
+                using (TcpClient tcp = new TcpClient(family))
+                {
+                    tcp.SendTimeout = tcp.ReceiveTimeout = 8000;
+                    if (!tcp.ConnectAsync(addr, 443).Wait(8000)) continue;
+                    using (System.Net.Security.SslStream ssl = new System.Net.Security.SslStream(tcp.GetStream()))
+                    {
+                        ssl.AuthenticateAsClient(relay.Host, null, System.Security.Authentication.SslProtocols.Tls12, false);
+                        byte[] req = Encoding.ASCII.GetBytes("GET " + path + " HTTP/1.1\r\nHost: " + relay.Host + "\r\nUser-Agent: Xdeck\r\nConnection: close\r\n\r\n");
+                        ssl.Write(req);
+                        ssl.Flush();
+                        ssl.ReadByte();   // the answer does not matter, only that the relay saw this address
+                    }
+                }
+            }
+            catch { }   // no IPv6 here, and the like
         }
     }
 
@@ -2566,8 +2604,20 @@ static class Remote
     static void Dispatch(Dictionary<string, object> m)
     {
         string t = m.ContainsKey("t") ? m["t"] as string : null;
-        if (t == "code")
+        if (t == "pairreq")   // a phone on this network tapped "Find my PC": show the code it must type
         {
+            Code = m["code"] as string;
+            CodeFrom = m.ContainsKey("phone") ? m["phone"] as string : null;
+            CodeUntil = DateTime.Now.AddMilliseconds(Math.Max(0, Convert.ToDouble(m["exp"]) - UnixMs()));
+            if (Environment.GetEnvironmentVariable("XDECK_RELAY") != null)
+                try { File.WriteAllText(Path.Combine(AppPaths.Data, "remote-test-offer.txt"), Code + " " + CodeFrom); } catch { }
+            Notify();
+            Action ask = PairRequested;
+            if (ask != null) ask();
+        }
+        else if (t == "code")
+        {
+            CodeFrom = null;
             Code = m["code"] as string;
             CodeUntil = DateTime.Now.AddMilliseconds(Math.Max(0, Convert.ToDouble(m["exp"]) - UnixMs()));
             if (Environment.GetEnvironmentVariable("XDECK_RELAY") != null)
@@ -3881,7 +3931,7 @@ class WebPanel : Form
         double left = Remote.Code == null ? 0 : (Remote.CodeUntil - DateTime.Now).TotalMilliseconds;
         return new Dictionary<string, object> {
             { "on", Remote.On }, { "online", Remote.Online }, { "error", Remote.Error },
-            { "code", left > 0 ? Remote.Code : null }, { "codeLeft", Math.Max(0, (long)left) },
+            { "code", left > 0 ? Remote.Code : null }, { "codeLeft", Math.Max(0, (long)left) }, { "from", Remote.CodeFrom },
             { "phones", Remote.Phones.ConvertAll(delegate (Remote.Phone p) { return (object)new Dictionary<string, object> {
                 { "id", p.Id }, { "name", p.Name }, { "online", p.Online } }; }) },
         };
@@ -4047,6 +4097,11 @@ class XdeckApp : Form
         // Phone remote (off until turned on in the panel): audio on the UI thread, the panel follows it.
         Remote.OnUi = delegate (Action a) { if (IsHandleCreated) BeginInvoke(a); else a(); };
         Remote.Changed = delegate { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.SendState(); }); };
+        Remote.PairRequested = delegate
+        {
+            // a phone on this network asked to connect: bring up the panel with the code to type
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.ShowPanel(); panel.SendState(); });
+        };
         Remote.Paired = delegate (string name)
         {
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { Balloon("Phone remote", name + " is paired. It controls this PC from the Xdeck app now.", false); });

@@ -147,10 +147,14 @@ The **Xdeck Remote** app makes a phone (Android or iPhone) a remote for the PC, 
 
 1. On the phone, open **[xdeck.skale.club](https://xdeck.skale.club)** and install it: Android
    offers **Install the app**; on iPhone tap **Share › Add to Home Screen**.
-2. On the PC, right-click the Xdeck gear in the tray › **Phone remote** › **Pair a phone…**: the
-   panel shows a 6-digit code.
-3. Type the 6-digit code from the panel in the app. That is all: from then on the app connects by
-   itself. Several PCs can be paired (the PC name at the top switches between them).
+2. With the phone on the same Wi-Fi as the PC, tap **Find my PC**: a 6-digit code pops up on the
+   PC's screen.
+3. Type that code in the app. That is all: from then on the app connects by itself, from anywhere.
+   Several PCs can be paired (the PC name at the top switches between them).
+
+The PC is found by the network it is on (the same public address), and only someone looking at its
+screen can read the code. For a PC on another network: right-click the Xdeck gear › **Phone
+remote** › **Pair a phone…** and type that code in the app (**I already have a code**).
 
 The app makes the phone:
 
