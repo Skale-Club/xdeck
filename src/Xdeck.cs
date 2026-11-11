@@ -4238,6 +4238,7 @@ class XdeckApp : Form
     // ------------------------------------------------ updates
     public static Action PanelUpdate;     // the panel's "Restart to update"
     ToolStripMenuItem updateItem, checkItem;
+    bool trayDot;                         // the tray gear shows the "update ready" dot
     bool userCheck, balloonIsUpdate;
     string announced;                     // the version whose "ready" notification was shown
 
@@ -4245,6 +4246,13 @@ class XdeckApp : Form
     {
         Updater.State st = Updater.Now;
         bool ready = st == Updater.State.Ready;
+        if (ready != trayDot)
+        {
+            trayDot = ready;
+            Icon old = tray.Icon;
+            tray.Icon = MakeTrayIcon(ready);
+            if (old != null) old.Dispose();
+        }
         updateItem.Visible = ready;
         updateItem.Text = "Restart to update to " + Updater.Version;
         checkItem.Enabled = st != Updater.State.Checking && st != Updater.State.Downloading && st != Updater.State.Installing;
@@ -4332,12 +4340,25 @@ class XdeckApp : Form
         }
     }
 
-    static Icon MakeTrayIcon()
+    // updateDot: an update is ready to install, so the gear wears a dot in the accent colour
+    // (bottom right, cut out of the gear so it reads at 16 px)
+    static Icon MakeTrayIcon(bool updateDot = false)
     {
         using (Bitmap bmp = new Bitmap(32, 32))
         {
             using (Graphics g = Graphics.FromImage(bmp))
+            {
                 Gear(g, 16, 16, 15f, Color.White);
+                if (updateDot)
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.CompositingMode = CompositingMode.SourceCopy;
+                    using (Brush clear = new SolidBrush(Color.Transparent)) g.FillEllipse(clear, 16, 16, 17, 17);
+                    g.CompositingMode = CompositingMode.SourceOver;
+                    Color dot = Ui.Accent.GetBrightness() < 0.35f ? Color.FromArgb(0x4C, 0xC2, 0xFF) : Ui.Accent;
+                    using (Brush b = new SolidBrush(dot)) g.FillEllipse(b, 19, 19, 12, 12);
+                }
+            }
             IntPtr h = bmp.GetHicon();
             Icon icon = (Icon)Icon.FromHandle(h).Clone();
             DestroyIcon(h);
