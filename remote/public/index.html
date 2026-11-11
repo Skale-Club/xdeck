@@ -486,28 +486,39 @@ const touches = new Map();
 let moved = 0, startAt = 0, maxFingers = 0, holdTimer = 0, dragging = false, acc = { x: 0, y: 0 }, scrollAcc = 0, hscrollAcc = 0, frame = 0;
 const SPEED = 1.6, NOTCH = 22;
 
+// Moves go out at most every 12 ms, from a timer: an installed app on Android may hold back
+// animation frames (battery saver), and the cursor then never moved.
+let lastMove = 0;
 function flush() {
   frame = 0;
+  lastMove = performance.now();
   const dx = Math.round(acc.x), dy = Math.round(acc.y);
   if (dx || dy) { send({ t: "move", dx, dy }); acc.x -= dx; acc.y -= dy; }
 }
-pad.addEventListener("pointerdown", (e) => {
-  pad.setPointerCapture(e.pointerId);
-  touches.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
+function queueMove() {
+  if (frame) return;
+  const wait = 12 - (performance.now() - lastMove);
+  if (wait <= 0) flush(); else frame = setTimeout(flush, wait);
+}
+// The gesture, from touch events on a phone (pointer events with a mouse when testing on a PC).
+// Touch events with preventDefault keep the finger's drag ours: Android can otherwise take a
+// moving finger for a scroll and cancel the pointer, and the cursor never moved.
+function fingerDown(id, x, y, t) {
+  touches.set(id, { x, y, t });
   if (touches.size === 1) {
-    moved = 0; startAt = e.timeStamp; maxFingers = 1; scrollAcc = 0; hscrollAcc = 0;
+    moved = 0; startAt = t; maxFingers = 1; scrollAcc = 0; hscrollAcc = 0;
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {
       if (touches.size === 1 && moved < 8) { dragging = true; pad.classList.add("drag"); send({ t: "click", b: 0, down: true }); vibrate(15); }
     }, 500);
   }
   maxFingers = Math.max(maxFingers, touches.size);
-});
-pad.addEventListener("pointermove", (e) => {
-  const p = touches.get(e.pointerId);
+}
+function fingerMove(id, x, y, t) {
+  const p = touches.get(id);
   if (!p) return;
-  const dx = e.clientX - p.x, dy = e.clientY - p.y, dt = Math.max(1, e.timeStamp - p.t);
-  p.x = e.clientX; p.y = e.clientY; p.t = e.timeStamp;
+  const dx = x - p.x, dy = y - p.y, dt = Math.max(1, t - p.t);
+  p.x = x; p.y = y; p.t = t;
   moved += Math.abs(dx) + Math.abs(dy);
   if (touches.size >= 2) {
     scrollAcc += dy / touches.size; hscrollAcc += dx / touches.size;
@@ -519,19 +530,30 @@ pad.addEventListener("pointermove", (e) => {
   const v = Math.hypot(dx, dy) / dt;
   const gain = SPEED * (1 + Math.min(2.5, v * 1.4));
   acc.x += dx * gain; acc.y += dy * gain;
-  if (!frame) frame = requestAnimationFrame(flush);
-});
-function lift(e) {
-  if (!touches.has(e.pointerId)) return;
-  touches.delete(e.pointerId);
+  queueMove();
+}
+function fingerUp(id, t) {
+  if (!touches.has(id)) return;
+  touches.delete(id);
   if (touches.size > 0) return;
   clearTimeout(holdTimer);
-  const quick = e.timeStamp - startAt < 250 && moved < 10;
+  const quick = t - startAt < 250 && moved < 10;
   if (dragging) { dragging = false; pad.classList.remove("drag"); send({ t: "click", b: 0, down: false }); }
   else if (quick) send({ t: "click", b: maxFingers >= 2 ? 1 : 0 });
 }
-pad.addEventListener("pointerup", lift);
-pad.addEventListener("pointercancel", lift);
+const now = () => performance.now();
+if ("ontouchstart" in window) {
+  const each = (e, fn) => { e.preventDefault(); for (const t of e.changedTouches) fn(t); };
+  pad.addEventListener("touchstart", (e) => each(e, (t) => fingerDown(t.identifier, t.clientX, t.clientY, now())), { passive: false });
+  pad.addEventListener("touchmove", (e) => each(e, (t) => fingerMove(t.identifier, t.clientX, t.clientY, now())), { passive: false });
+  pad.addEventListener("touchend", (e) => each(e, (t) => fingerUp(t.identifier, now())), { passive: false });
+  pad.addEventListener("touchcancel", (e) => each(e, (t) => fingerUp(t.identifier, now())), { passive: false });
+} else {
+  pad.addEventListener("pointerdown", (e) => { pad.setPointerCapture(e.pointerId); fingerDown(e.pointerId, e.clientX, e.clientY, now()); });
+  pad.addEventListener("pointermove", (e) => fingerMove(e.pointerId, e.clientX, e.clientY, now()));
+  pad.addEventListener("pointerup", (e) => fingerUp(e.pointerId, now()));
+  pad.addEventListener("pointercancel", (e) => fingerUp(e.pointerId, now()));
+}
 
 function holdButton(id, b) {
   const el = $(id);
