@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-11-11
+
+- **Xdeck Remote is an app now**, installable on Android and iPhone from
+  [xdeck.skale.club](https://xdeck.skale.club), and it pairs with a 6-digit code instead of a QR code:
+  **Pair a phone** in the panel shows the code, you type it in the app once, and from then on it
+  connects by itself, from anywhere (mobile data too). Several PCs can be paired from one phone.
+- Phone and PC meet through a relay (a Cloudflare Worker with Durable Objects, `remote/`), so the PC
+  listens on no port: the firewall rule 0.5.0 made is removed. Everything between them is encrypted
+  end to end (ECDH P-256, AES-CBC + HMAC-SHA256), so the relay cannot read it.
+- The panel lists the paired phones, with a dot for the ones connected, and **Remove**.
+
 ## 0.5.1 — 2026-11-11
 
 - The Updates area shows up only when there is something to do (downloading, ready, installing);

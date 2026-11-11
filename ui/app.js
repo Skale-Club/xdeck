@@ -217,30 +217,55 @@ function panelHtml() {
 }
 
 // ------------------------------------------------------------ phone remote
-// Off: one switch. On: the QR code with the pairing link, how many phones are connected, and a
-// new link (which unpairs every phone).
+// Off: one switch. On: "Pair a phone" (a 6-digit code the phone types in the Xdeck Remote app at
+// xdeck.skale.club, with how long it is still good) and the paired phones, each removable.
+let codeDeadline = 0, codeTimer = 0;
 function remoteHtml() {
   const r = state.remote;
   if (!r) return "";
-  const sub = r.error ? esc(r.error) : !r.on ? "Use your phone as touchpad, keyboard and remote" :
-    r.clients ? `${r.clients} phone${r.clients > 1 ? "s" : ""} connected` : "Scan the code with your phone";
+  const online = (r.phones || []).filter((p) => p.online).length;
+  const sub = !r.on ? "Your phone as touchpad, keyboard and remote" :
+    !r.online ? (r.error ? "Can't connect · " + esc(r.error) : "Connecting…") :
+    online ? `${online} phone${online > 1 ? "s" : ""} connected` : (r.phones || []).length ? "Ready" : "Pair a phone to start";
   let h = `<h2>Phone remote</h2>
     <div class="card switch-row" data-act="remote" data-nav="remote" role="switch" aria-checked="${r.on ? "true" : "false"}">
       <span class="disc">${I.phone}</span>
       <span class="who"><div class="nm">Phone remote</div><div class="sub">${sub}</div></span>
       <span class="switch${r.on ? " on" : ""}"><b></b></span></div>`;
-  if (r.on && r.url && !r.error) {
-    let qr = "";
-    try { qr = QR.svg(r.url, 132); } catch (e) { qr = ""; }
+  if (!r.on) return h;
+  if (r.code) {
+    const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
     h += `<div class="remote-pair">
-        ${qr}
+        <div class="remote-code">${esc(r.code.slice(0, 3))} ${esc(r.code.slice(3))}</div>
         <div class="remote-txt">
-          <div>Point your phone's camera at the code and open the link. The phone must be on the same Wi-Fi.</div>
-          <div class="remote-url">${esc(r.url.split("#")[0])}</div>
-          <button class="upd-btn" data-act="remote-new" data-nav="remote-new" title="Phones paired so far stop working">New link</button>
+          <div>On the phone, open <b>xdeck.skale.club</b> (install it as an app) and type this code.</div>
+          <div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div>
+          <button class="upd-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel</button>
         </div></div>`;
+  } else if (r.online) {
+    h += `<button class="upd-btn pair-btn" data-act="remote-code" data-nav="remote-code">Pair a phone</button>`;
+  }
+  if ((r.phones || []).length) {
+    h += `<div class="phone-list">`;
+    for (const p of r.phones)
+      h += `<div class="phone-row"><span class="pdot${p.online ? " on" : ""}"></span><span class="pnm">${esc(p.name)}</span>
+              <button class="link-btn" data-act="remote-unpair" data-id="${esc(p.id)}" data-nav="unpair-${esc(p.id)}">Remove</button></div>`;
+    h += `</div>`;
   }
   return h;
+}
+
+// the pairing code's countdown, without redrawing the panel
+function tickCode() {
+  clearInterval(codeTimer);
+  const r = state.remote;
+  if (!r || !r.code) return;
+  codeTimer = setInterval(() => {
+    const el = document.getElementById("codeLeft");
+    const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
+    if (el) el.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left`;
+    if (left <= 0) { clearInterval(codeTimer); if (state.remote) { state.remote.code = null; render(); } }
+  }, 1000);
 }
 
 // ------------------------------------------------------------ updates
@@ -765,7 +790,9 @@ $app.addEventListener("click", (e) => {
   else if (act === "back") backToPanel();
   else if (act === "update") send({ type: "update" });
   else if (act === "remote") send({ type: "remote", on: !(state.remote && state.remote.on) });
-  else if (act === "remote-new") send({ type: "remote-new" });
+  else if (act === "remote-code") send({ type: "remote-code" });
+  else if (act === "remote-cancel") send({ type: "remote-cancel" });
+  else if (act === "remote-unpair") send({ type: "remote-unpair", id: t.dataset.id });
   else if (act === "check") { send({ type: "check" }); state.upd = { ...state.upd, state: "checking", error: null }; updateUpdates(); }
   else if (act === "mouse") {
     const p = state.pads.find((x) => x.key === t.dataset.key);
@@ -781,7 +808,11 @@ document.addEventListener("keydown", (e) => {
 
 if (host) host.addEventListener("message", (e) => {
   const m = e.data;
-  if (m.type === "state") { if (dragging) pendingState = m; else { state = m; render(); } }
+  if (m.type === "state") {
+    if (m.remote && m.remote.code) codeDeadline = Date.now() + (m.remote.codeLeft || 0);
+    if (dragging) pendingState = m; else { state = m; render(); }
+    tickCode();
+  }
   else if (m.type === "levels") { levels = m.levels || {}; updateMeters(); }
   else if (m.type === "show") {
     view = "panel"; expanded = 0; testing = null; padMode = !!m.pad; focusKey = null;

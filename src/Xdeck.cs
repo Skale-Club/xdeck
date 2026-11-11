@@ -544,22 +544,18 @@ static class Updater
                 catch (Exception ex) { failed++; say("failed " + dest + ": " + ex.Message); }
             }
             say(failed == 0 ? "done" : failed + " files failed");
-            // Running as administrator (an install for everyone): open the phone remote's port too,
-            // as XdeckSetup.exe does, so copies installed before the remote existed get it.
+            // Running as administrator (an install for everyone): remove the firewall rule 0.5.0 made
+            // for the old on-PC phone remote; the remote now goes through the relay and listens on nothing.
             if (new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
                     .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))
-                foreach (string args in new string[] {
-                    "advfirewall firewall delete rule name=\"Xdeck phone remote\"",
-                    "advfirewall firewall add rule name=\"Xdeck phone remote\" dir=in action=allow program=\"" + Path.Combine(target, "Xdeck.exe") +
-                    "\" protocol=TCP localport=8765 profile=private,domain enable=yes" })
-                    try
-                    {
-                        ProcessStartInfo fw = new ProcessStartInfo("netsh.exe", args);
-                        fw.CreateNoWindow = true;
-                        fw.UseShellExecute = false;
-                        using (Process p = Process.Start(fw)) p.WaitForExit(10000);
-                    }
-                    catch { }
+                try
+                {
+                    ProcessStartInfo fw = new ProcessStartInfo("netsh.exe", "advfirewall firewall delete rule name=\"Xdeck phone remote\"");
+                    fw.CreateNoWindow = true;
+                    fw.UseShellExecute = false;
+                    using (Process p = Process.Start(fw)) p.WaitForExit(10000);
+                }
+                catch { }
             // Settings › Apps shows the new version (XdeckSetup.exe made that entry)
             foreach (RegistryHive hive in new RegistryHive[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser })
                 try
@@ -2359,327 +2355,267 @@ static class Inject
 }
 
 // ---------------------------------------------------------------- phone remote
-// Like Unified Remote: a phone on the same network opens the page Xdeck serves (ui\remote.html)
-// and becomes a touchpad, a keyboard, media keys, the audio output switch and OBS buttons. It is
-// off until turned on in the panel, which then shows a QR code with the pairing link. Only a phone
-// that opened that link (it carries a random key) can send anything; a new link unpairs every
-// phone. Plain HTTP + WebSocket on a TcpListener, so it needs no administrator (an install for
-// everyone also opens the port in the firewall for private networks).
+// Like Unified Remote: the Xdeck Remote app (https://xdeck.skale.club, installable on Android and
+// iPhone) makes a phone a touchpad, keyboard, media keys, audio output switch and OBS buttons.
+// Turned on in the panel, Xdeck keeps a WebSocket open to the relay there (remote\src\worker.js);
+// phones reach it through the relay from anywhere, so nothing listens on this PC and no firewall
+// port is needed. Pairing: the panel shows a 6-digit code (asked from the relay); the phone types
+// it and gets this PC's public key, and this PC gets the phone's. Every message between them is
+// encrypted end to end (RemoteCrypto), so the relay only passes opaque strings on.
 static class Remote
 {
-    public const int Port = 8765;
+    public const string DefaultRelay = "wss://xdeck.skale.club";
     public static volatile bool On;
-    public static volatile string Error;     // why it could not start
-    public static volatile int Clients;      // phones connected now
-    public static volatile string Token;
-    public static Action<Action> OnUi;       // set by the app: runs on the UI thread (audio)
-    public static Action Changed;            // set by the app: on / clients / error changed
+    public static volatile bool Online;         // connected to the relay
+    public static volatile string Error;        // why not, when it keeps failing
+    public static volatile string Code;         // the pairing code on show, or null
+    public static DateTime CodeUntil;
+    public static Action<Action> OnUi;          // set by the app: runs on the UI thread (audio)
+    public static Action Changed;               // set by the app: on / online / code / phones changed
+
+    public class Phone
+    {
+        public string Id, Name, Pub;
+        public byte[] Enc, Mac;
+        public bool Online;
+    }
+    static readonly List<Phone> phones = new List<Phone>();
+    public static List<Phone> Phones { get { lock (phones) return new List<Phone>(phones); } }
 
     static readonly JavaScriptSerializer json = new JavaScriptSerializer();
-    static readonly object gate = new object();
-    static readonly List<NetworkStream> phones = new List<NetworkStream>();
-    static TcpListener listener;
     static readonly string[] ObsActions = { "record", "pause", "stream", "replay", "virtualcam", "scene.next", "scene.previous" };
+    static readonly object sendLock = new object();
+    static string pcId, secret;
+    static CngKey key;
+    static ClientWebSocket ws;
+    static Thread loop;
+    static AutoResetEvent wake = new AutoResetEvent(false);
+
+    // XDECK_RELAY points a test copy at another relay (wrangler dev: ws://127.0.0.1:8787).
+    static string Relay
+    {
+        get { string r = Environment.GetEnvironmentVariable("XDECK_RELAY"); return string.IsNullOrEmpty(r) ? DefaultRelay : r.TrimEnd('/'); }
+    }
 
     static string ConfigFile { get { return Path.Combine(AppPaths.Data, "remote.json"); } }
     static void Notify() { Action c = Changed; if (c != null) c(); }
 
+    // ------------------------------------------------ settings: remote.json, secrets protected for this Windows user
     public static void Load()
     {
         try
         {
             Dictionary<string, object> d = json.Deserialize<Dictionary<string, object>>(File.ReadAllText(ConfigFile));
-            Token = d.ContainsKey("token") ? d["token"] as string : null;
             On = d.ContainsKey("on") && d["on"] is bool && (bool)d["on"];
+            pcId = d.ContainsKey("pc") ? d["pc"] as string : null;
+            secret = Unprotect(d.ContainsKey("secret") ? d["secret"] as string : null);
+            string k = Unprotect(d.ContainsKey("key") ? d["key"] as string : null);
+            if (k != null) key = CngKey.Import(Convert.FromBase64String(k), CngKeyBlobFormat.EccPrivateBlob);
+            System.Collections.ArrayList list = d.ContainsKey("phones") ? d["phones"] as System.Collections.ArrayList : null;
+            if (list != null && key != null)
+                foreach (object o in list)
+                {
+                    Dictionary<string, object> p = o as Dictionary<string, object>;
+                    if (p == null) continue;
+                    Phone ph = new Phone { Id = p["id"] as string, Name = p["name"] as string, Pub = p["pub"] as string };
+                    try { RemoteCrypto.Derive(key, ph.Pub, out ph.Enc, out ph.Mac); lock (phones) phones.Add(ph); } catch { }
+                }
         }
         catch { }
-        if (string.IsNullOrEmpty(Token) || Token.Length < 20) { NewKey(); Save(); }
+        if (pcId == null || secret == null || key == null)
+        {
+            pcId = RemoteCrypto.Random(18);
+            secret = RemoteCrypto.Random(32);
+            key = RemoteCrypto.NewKey();
+            lock (phones) phones.Clear();
+            Save();
+        }
         if (On) Start();
     }
 
     static void Save()
     {
-        try { File.WriteAllText(ConfigFile, json.Serialize(new Dictionary<string, object> { { "on", On }, { "token", Token } })); }
+        try
+        {
+            List<object> list = new List<object>();
+            foreach (Phone p in Phones) list.Add(new Dictionary<string, object> { { "id", p.Id }, { "name", p.Name }, { "pub", p.Pub } });
+            File.WriteAllText(ConfigFile, json.Serialize(new Dictionary<string, object> {
+                { "on", On }, { "pc", pcId }, { "secret", Protect(secret) },
+                { "key", Protect(Convert.ToBase64String(key.Export(CngKeyBlobFormat.EccPrivateBlob))) }, { "phones", list } }));
+        }
         catch { }
     }
 
-    static void NewKey()
+    static string Protect(string s)
     {
-        byte[] b = new byte[18];
-        using (RandomNumberGenerator r = RandomNumberGenerator.Create()) r.GetBytes(b);
-        Token = Convert.ToBase64String(b).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(s), null, DataProtectionScope.CurrentUser));
     }
 
+    static string Unprotect(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(s), null, DataProtectionScope.CurrentUser)); }
+        catch { return null; }
+    }
+
+    // ------------------------------------------------ panel actions
     public static void Set(bool on)
     {
         On = on;
         Save();
-        if (on) Start(); else Stop();
+        if (on) Start();
+        else { Code = null; Close(); }
         Notify();
     }
 
-    // A new pairing link: every phone paired so far is dropped and has to scan again.
-    public static void NewLink()
+    public static void AskCode()
     {
-        NewKey();
+        if (!Online) return;
+        SendRaw(new Dictionary<string, object> { { "t", "code" } });
+    }
+
+    public static void CancelCode() { Code = null; Notify(); }
+
+    public static void Unpair(string id)
+    {
+        lock (phones) phones.RemoveAll(delegate (Phone p) { return p.Id == id; });
         Save();
-        DropAll();
+        SendRaw(new Dictionary<string, object> { { "t", "unpair" }, { "phone", id } });
         Notify();
     }
 
-    // The link the QR code holds. The key rides in the #fragment, so it never travels in a request line.
-    public static string Url { get { return "http://" + LanAddress() + ":" + Port + "/#k=" + Token; } }
-
+    // ------------------------------------------------ the relay connection
     static void Start()
     {
-        lock (gate)
+        lock (sendLock)
         {
-            if (listener != null) return;
-            try
+            if (loop != null && loop.IsAlive) { wake.Set(); return; }
+            loop = new Thread(Run);
+            loop.IsBackground = true;
+            loop.Start();
+        }
+    }
+
+    static void Close()
+    {
+        ClientWebSocket c = ws;
+        if (c != null) try { c.Abort(); } catch { }
+        wake.Set();
+    }
+
+    static void Run()
+    {
+        int backoff = 1000;
+        while (On)
+        {
+            using (ClientWebSocket c = new ClientWebSocket())
             {
-                listener = new TcpListener(IPAddress.Any, Port);
-                listener.Start();
-                Error = null;
+                try
+                {
+                    c.Options.KeepAliveInterval = TimeSpan.FromSeconds(25);
+                    ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12 | (SecurityProtocolType)12288;
+                    c.ConnectAsync(new Uri(Relay + "/pc?id=" + pcId + "&secret=" + Uri.EscapeDataString(secret)), CancellationToken.None).Wait(20000);
+                    if (c.State != WebSocketState.Open) throw new Exception("could not reach " + Relay.Replace("wss://", "").Replace("ws://", ""));
+                    ws = c;
+                    Online = true;
+                    Error = null;
+                    backoff = 1000;
+                    Notify();
+                    SendRaw(new Dictionary<string, object> { { "t", "hello" }, { "name", Environment.MachineName }, { "pub", RemoteCrypto.PublicRaw(key) } });
+                    if (Environment.GetEnvironmentVariable("XDECK_RELAY") != null) AskCode();   // a test copy pairs without the panel
+                    Receive(c);
+                }
+                catch (Exception ex)
+                {
+                    Exception e = ex is AggregateException && ex.InnerException != null ? ex.InnerException : ex;
+                    if (On) Error = e.Message;
+                }
+                ws = null;
+                Online = false;
+                lock (phones) foreach (Phone p in phones) p.Online = false;
+                Notify();
             }
-            catch (Exception ex)
-            {
-                listener = null;
-                SocketException se = ex as SocketException;
-                Error = se != null && se.SocketErrorCode == SocketError.AddressAlreadyInUse ? "Port " + Port + " is used by another app" : ex.Message;
-                return;
-            }
-            TcpListener l = listener;
-            Thread t = new Thread(delegate () { Accept(l); });
-            t.IsBackground = true;
-            t.Start();
+            if (!On) break;
+            wake.WaitOne(backoff);
+            backoff = Math.Min(backoff * 2, 30000);
         }
     }
 
-    static void Stop()
+    static void Receive(ClientWebSocket c)
     {
-        lock (gate)
+        byte[] buf = new byte[65536];
+        MemoryStream msg = new MemoryStream();
+        while (On && c.State == WebSocketState.Open)
         {
-            if (listener != null) { try { listener.Stop(); } catch { } listener = null; }
-        }
-        DropAll();
-    }
-
-    static void DropAll()
-    {
-        List<NetworkStream> all;
-        lock (phones) { all = new List<NetworkStream>(phones); phones.Clear(); }
-        foreach (NetworkStream s in all) try { s.Close(); } catch { }
-    }
-
-    static void Accept(TcpListener l)
-    {
-        while (true)
-        {
-            TcpClient c;
-            try { c = l.AcceptTcpClient(); } catch { return; }   // stopped
-            Thread t = new Thread(delegate () { Serve(c); });
-            t.IsBackground = true;
-            t.Start();
+            WebSocketReceiveResult r = c.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None).Result;
+            if (r.MessageType == WebSocketMessageType.Close) break;
+            msg.Write(buf, 0, r.Count);
+            if (!r.EndOfMessage) continue;
+            string text = Encoding.UTF8.GetString(msg.ToArray());
+            msg.SetLength(0);
+            try { Dispatch(json.Deserialize<Dictionary<string, object>>(text)); } catch { }
         }
     }
 
-    // The IPv4 address phones reach this PC at: an interface with a gateway, not a virtual one
-    // (Hyper-V, WSL, Docker, VPN), on a private range.
-    public static string LanAddress()
+    static void SendRaw(Dictionary<string, object> m)
     {
-        string best = null;
-        int bestScore = -1;
-        try
+        ClientWebSocket c = ws;
+        if (c == null || c.State != WebSocketState.Open) return;
+        byte[] b = Encoding.UTF8.GetBytes(json.Serialize(m));
+        lock (sendLock)
         {
-            foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                    ni.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
-                IPInterfaceProperties p = ni.GetIPProperties();
-                bool gateway = false;
-                foreach (GatewayIPAddressInformation g in p.GatewayAddresses)
-                    if (g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any)) gateway = true;
-                string desc = (ni.Description + " " + ni.Name).ToLowerInvariant();
-                bool virtualNic = desc.Contains("virtual") || desc.Contains("vmware") || desc.Contains("hyper-v") || desc.Contains("vethernet") ||
-                                  desc.Contains("wsl") || desc.Contains("docker") || desc.Contains("tailscale") || desc.Contains("zerotier") || desc.Contains("vpn");
-                foreach (UnicastIPAddressInformation u in p.UnicastAddresses)
-                {
-                    if (u.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-                    byte[] b = u.Address.GetAddressBytes();
-                    if (b[0] == 169 && b[1] == 254) continue;
-                    bool lan = (b[0] == 192 && b[1] == 168) || b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31);
-                    int score = (gateway ? 4 : 0) + (virtualNic ? 0 : 2) + (lan ? 1 : 0);
-                    if (score > bestScore) { bestScore = score; best = u.Address.ToString(); }
-                }
-            }
-        }
-        catch { }
-        return best ?? "127.0.0.1";
-    }
-
-    // ------------------------------------------------ HTTP
-    static void Serve(TcpClient c)
-    {
-        using (c)
-        {
-            try
-            {
-                c.NoDelay = true;
-                NetworkStream s = c.GetStream();
-                s.ReadTimeout = 10000;
-                string head = ReadHead(s);
-                if (head == null) return;
-                string[] lines = head.Split(new[] { "\r\n" }, StringSplitOptions.None);
-                string[] first = lines[0].Split(' ');
-                if (first.Length < 2 || first[0] != "GET") { Reply(s, "405 Method Not Allowed", "text/plain", "GET only"); return; }
-                Dictionary<string, string> h = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                for (int i = 1; i < lines.Length; i++)
-                {
-                    int colon = lines[i].IndexOf(':');
-                    if (colon > 0) h[lines[i].Substring(0, colon).Trim()] = lines[i].Substring(colon + 1).Trim();
-                }
-                string target = first[1], path = target, query = "";
-                int q = target.IndexOf('?');
-                if (q >= 0) { path = target.Substring(0, q); query = target.Substring(q + 1); }
-
-                string key = null;
-                foreach (string part in query.Split('&'))
-                    if (part.StartsWith("k=")) key = Uri.UnescapeDataString(part.Substring(2));
-                if (path == "/check")   // the page asks whether its key still pairs (a WebSocket cannot tell it)
-                {
-                    if (key != null && Same(key, Token)) Reply(s, "200 OK", "text/plain", "paired");
-                    else Reply(s, "403 Forbidden", "text/plain", "not paired");
-                    return;
-                }
-                if (path == "/ws")
-                {
-                    string wsKey;
-                    if (!h.TryGetValue("Sec-WebSocket-Key", out wsKey)) { Reply(s, "400 Bad Request", "text/plain", "WebSocket only"); return; }
-                    if (key == null || !Same(key, Token)) { Reply(s, "403 Forbidden", "text/plain", "Not paired: scan the QR code in the Xdeck panel"); return; }
-                    string accept;
-                    using (SHA1 sha = SHA1.Create())
-                        accept = Convert.ToBase64String(sha.ComputeHash(Encoding.ASCII.GetBytes(wsKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
-                    byte[] ok = Encoding.ASCII.GetBytes("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n");
-                    s.Write(ok, 0, ok.Length);
-                    Phone(s);
-                    return;
-                }
-                if (path == "/" || path == "/index.html")
-                {
-                    string page = Path.Combine(AppPaths.Exe, @"ui\remote.html");
-                    if (File.Exists(page)) Reply(s, "200 OK", "text/html; charset=utf-8", File.ReadAllText(page, Encoding.UTF8));
-                    else Reply(s, "404 Not Found", "text/plain", "remote.html is missing");
-                    return;
-                }
-                if (path == "/manifest.webmanifest")
-                {
-                    Reply(s, "200 OK", "application/manifest+json", "{\"name\":\"Xdeck Remote\",\"short_name\":\"Xdeck\",\"display\":\"standalone\"," +
-                        "\"background_color\":\"#1f1f22\",\"theme_color\":\"#1f1f22\",\"start_url\":\"/\"}");
-                    return;
-                }
-                Reply(s, "404 Not Found", "text/plain", "Not found");
-            }
-            catch { }
+            try { c.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, CancellationToken.None).Wait(10000); } catch { }
         }
     }
 
-    static string ReadHead(NetworkStream s)
-    {
-        byte[] buf = new byte[8192];
-        int n = 0;
-        while (n < buf.Length)
-        {
-            int r = s.Read(buf, n, buf.Length - n);
-            if (r <= 0) return null;
-            n += r;
-            string so = Encoding.ASCII.GetString(buf, 0, n);
-            int end = so.IndexOf("\r\n\r\n");
-            if (end >= 0) return so.Substring(0, end);
-        }
-        return null;
-    }
+    static Phone Find(string id) { lock (phones) return phones.Find(delegate (Phone p) { return p.Id == id; }); }
 
-    static void Reply(NetworkStream s, string status, string type, string body)
+    static void Dispatch(Dictionary<string, object> m)
     {
-        byte[] b = Encoding.UTF8.GetBytes(body);
-        byte[] head = Encoding.ASCII.GetBytes("HTTP/1.1 " + status + "\r\nContent-Type: " + type + "\r\nContent-Length: " + b.Length +
-            "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
-        s.Write(head, 0, head.Length);
-        s.Write(b, 0, b.Length);
-    }
-
-    static bool Same(string a, string b)
-    {
-        if (a == null || b == null || a.Length != b.Length) return false;
-        int diff = 0;
-        for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-        return diff == 0;
-    }
-
-    // ------------------------------------------------ WebSocket
-    static void Phone(NetworkStream s)
-    {
-        s.ReadTimeout = Timeout.Infinite;
-        lock (phones) phones.Add(s);
-        Clients = phones.Count;
-        Notify();
-        try
+        string t = m.ContainsKey("t") ? m["t"] as string : null;
+        if (t == "code")
         {
-            SendState(s);
-            while (true)
-            {
-                int b0 = s.ReadByte(), b1 = s.ReadByte();
-                if (b0 < 0 || b1 < 0) break;
-                int op = b0 & 0x0F;
-                bool masked = (b1 & 0x80) != 0;
-                long len = b1 & 0x7F;
-                if (len == 126) len = (ReadN(s, 1)[0] << 8) | ReadN(s, 1)[0];
-                else if (len == 127) { byte[] l8 = ReadN(s, 8); len = 0; for (int i = 0; i < 8; i++) len = (len << 8) | l8[i]; }
-                if (!masked || len > 65536) break;   // a browser always masks; nothing it sends here is large
-                byte[] mask = ReadN(s, 4), data = ReadN(s, (int)len);
-                for (int i = 0; i < data.Length; i++) data[i] ^= mask[i & 3];
-                if (op == 0x8) { Frame(s, 0x8, new byte[0]); break; }
-                if (op == 0x9) { Frame(s, 0xA, data); continue; }
-                if (op != 0x1) continue;
-                try { Handle(s, json.Deserialize<Dictionary<string, object>>(Encoding.UTF8.GetString(data))); }
-                catch { }
-            }
-        }
-        catch { }
-        finally
-        {
-            lock (phones) phones.Remove(s);
-            Clients = phones.Count;
+            Code = m["code"] as string;
+            CodeUntil = DateTime.Now.AddMilliseconds(Math.Max(0, Convert.ToDouble(m["exp"]) - UnixMs()));
+            if (Environment.GetEnvironmentVariable("XDECK_RELAY") != null)
+                try { File.WriteAllText(Path.Combine(AppPaths.Data, "remote-test-code.txt"), Code); } catch { }
             Notify();
         }
-    }
-
-    static byte[] ReadN(NetworkStream s, int n)
-    {
-        byte[] b = new byte[n];
-        int got = 0;
-        while (got < n)
+        else if (t == "paired")
         {
-            int r = s.Read(b, got, n - got);
-            if (r <= 0) throw new IOException("closed");
-            got += r;
+            Phone p = new Phone { Id = m["phone"] as string, Name = m["name"] as string, Pub = m["pub"] as string };
+            try { RemoteCrypto.Derive(key, p.Pub, out p.Enc, out p.Mac); } catch { return; }
+            lock (phones) { phones.RemoveAll(delegate (Phone x) { return x.Id == p.Id; }); phones.Add(p); }
+            Code = null;
+            Save();
+            Notify();
         }
-        return b;
+        else if (t == "online")
+        {
+            HashSet<string> on = new HashSet<string>();
+            System.Collections.ArrayList ids = m["phones"] as System.Collections.ArrayList;
+            if (ids != null) foreach (object o in ids) on.Add(o as string);
+            lock (phones) foreach (Phone p in phones) p.Online = on.Contains(p.Id);
+            Notify();
+        }
+        else if (t == "m")
+        {
+            Phone p = Find(m["phone"] as string);
+            if (p == null) return;
+            string plain = RemoteCrypto.Open(p.Enc, p.Mac, m["d"] as string);
+            if (plain == null) return;   // not from this phone (or tampered with)
+            Handle(json.Deserialize<Dictionary<string, object>>(plain), delegate (Dictionary<string, object> reply) { SendTo(p, reply); });
+        }
     }
 
-    static void Frame(NetworkStream s, int op, byte[] data)
+    static double UnixMs() { return (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds; }
+
+    static void SendTo(Phone p, Dictionary<string, object> m)
     {
-        byte[] head;
-        if (data.Length < 126) head = new byte[] { (byte)(0x80 | op), (byte)data.Length };
-        else head = new byte[] { (byte)(0x80 | op), 126, (byte)(data.Length >> 8), (byte)data.Length };
-        lock (s) { s.Write(head, 0, head.Length); s.Write(data, 0, data.Length); }
+        SendRaw(new Dictionary<string, object> { { "t", "m" }, { "phone", p.Id }, { "d", RemoteCrypto.Seal(p.Enc, p.Mac, json.Serialize(m)) } });
     }
 
-    static void Send(NetworkStream s, Dictionary<string, object> m)
-    {
-        try { Frame(s, 0x1, Encoding.UTF8.GetBytes(json.Serialize(m))); } catch { }
-    }
-
+    // ------------------------------------------------ what a phone asks for
     static int Num(Dictionary<string, object> m, string k, int min, int max)
     {
         object v;
@@ -2688,7 +2624,7 @@ static class Remote
         return (int)Math.Max(min, Math.Min(max, Math.Round(d)));
     }
 
-    static void Handle(NetworkStream s, Dictionary<string, object> m)
+    static void Handle(Dictionary<string, object> m, Action<Dictionary<string, object>> reply)
     {
         string t = m.ContainsKey("t") ? m["t"] as string : null;
         switch (t)
@@ -2712,8 +2648,7 @@ static class Remote
                 {
                     int vk = Num(m, "vk", 1, 254);
                     List<int> mods = new List<int>();
-                    object ml = m.ContainsKey("mods") ? m["mods"] : null;
-                    System.Collections.ArrayList al = ml as System.Collections.ArrayList;
+                    System.Collections.ArrayList al = m.ContainsKey("mods") ? m["mods"] as System.Collections.ArrayList : null;
                     if (al != null) foreach (object o in al)
                         {
                             string n = o as string;
@@ -2749,7 +2684,7 @@ static class Remote
                     if (Array.IndexOf(ObsActions, a) >= 0) Obs.Run(new ObsBinding { Key = "obs." + a, Action = a });
                     break;
                 }
-            case "state": SendState(s); break;
+            case "state": RunUi(delegate { reply(State()); }); break;
         }
     }
 
@@ -2759,18 +2694,17 @@ static class Remote
         if (on != null) on(a); else a();
     }
 
-    // The audio outputs, the default one and its volume (read on the UI thread, sent from there).
-    static void SendState(NetworkStream to)
+    // every phone online gets the audio outputs again (after a change)
+    public static void Broadcast()
     {
+        List<Phone> online = Phones.FindAll(delegate (Phone p) { return p.Online; });
+        if (online.Count == 0) return;
         RunUi(delegate
         {
             Dictionary<string, object> st = State();
-            if (to != null) Send(to, st);
-            else { List<NetworkStream> all; lock (phones) all = new List<NetworkStream>(phones); foreach (NetworkStream p in all) Send(p, st); }
+            foreach (Phone p in online) SendTo(p, st);
         });
     }
-
-    public static void Broadcast() { if (Clients > 0) SendState(null); }
 
     static Dictionary<string, object> State()
     {
@@ -2784,8 +2718,113 @@ static class Remote
             if (def != null) Audio.GetVolume(def, out vol, out mute);
         }
         catch { }
-        return new Dictionary<string, object> {
-            { "t", "state" }, { "outs", outs }, { "def", def }, { "vol", Math.Round(vol, 3) }, { "mute", mute }, { "pc", Environment.MachineName } };
+        return new Dictionary<string, object> { { "t", "state" }, { "outs", outs }, { "def", def }, { "vol", Math.Round(vol, 3) }, { "mute", mute } };
+    }
+}
+
+// End-to-end encryption between this PC and a phone. Keys: ECDH P-256 (CNG here, WebCrypto on the
+// phone); with Z the shared secret, the AES key is SHA-256(01 || Z) and the HMAC key SHA-256(02 || Z).
+// A message is base64(iv || AES-256-CBC(PKCS7) || HMAC-SHA256(iv || ciphertext)).
+static class RemoteCrypto
+{
+    public static string Random(int bytes)
+    {
+        byte[] b = new byte[bytes];
+        using (RandomNumberGenerator r = RandomNumberGenerator.Create()) r.GetBytes(b);
+        return Convert.ToBase64String(b).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    }
+
+    public static CngKey NewKey()
+    {
+        CngKeyCreationParameters p = new CngKeyCreationParameters();
+        p.ExportPolicy = CngExportPolicies.AllowPlaintextExport;
+        return CngKey.Create(CngAlgorithm.ECDiffieHellmanP256, null, p);
+    }
+
+    // base64 of the uncompressed point (04 || X || Y), WebCrypto's "raw" format
+    public static string PublicRaw(CngKey k)
+    {
+        byte[] blob = k.Export(CngKeyBlobFormat.EccPublicBlob);   // magic, length, X, Y
+        byte[] raw = new byte[65];
+        raw[0] = 4;
+        Buffer.BlockCopy(blob, 8, raw, 1, 64);
+        return Convert.ToBase64String(raw);
+    }
+
+    static CngKey ImportRaw(string b64)
+    {
+        byte[] raw = Convert.FromBase64String(b64);
+        if (raw.Length != 65 || raw[0] != 4) throw new ArgumentException("not a P-256 public key");
+        byte[] blob = new byte[72];
+        BitConverter.GetBytes(0x314B4345).CopyTo(blob, 0);      // BCRYPT_ECDH_PUBLIC_P256_MAGIC
+        BitConverter.GetBytes(32).CopyTo(blob, 4);
+        Buffer.BlockCopy(raw, 1, blob, 8, 64);
+        return CngKey.Import(blob, CngKeyBlobFormat.EccPublicBlob);
+    }
+
+    public static void Derive(CngKey mine, string theirPub, out byte[] enc, out byte[] mac)
+    {
+        using (CngKey theirs = ImportRaw(theirPub))
+        using (ECDiffieHellmanCng e = new ECDiffieHellmanCng(mine))
+        {
+            e.KeyDerivationFunction = ECDiffieHellmanKeyDerivationFunction.Hash;
+            e.HashAlgorithm = CngAlgorithm.Sha256;
+            e.SecretPrepend = new byte[] { 1 };
+            enc = e.DeriveKeyMaterial(theirs);
+            e.SecretPrepend = new byte[] { 2 };
+            mac = e.DeriveKeyMaterial(theirs);
+        }
+    }
+
+    public static string Seal(byte[] enc, byte[] mac, string text)
+    {
+        using (Aes aes = Aes.Create())
+        {
+            aes.Key = enc;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+            aes.GenerateIV();
+            byte[] pt = Encoding.UTF8.GetBytes(text);
+            byte[] ct;
+            using (ICryptoTransform x = aes.CreateEncryptor()) ct = x.TransformFinalBlock(pt, 0, pt.Length);
+            byte[] body = new byte[16 + ct.Length];
+            Buffer.BlockCopy(aes.IV, 0, body, 0, 16);
+            Buffer.BlockCopy(ct, 0, body, 16, ct.Length);
+            byte[] tag;
+            using (HMACSHA256 h = new HMACSHA256(mac)) tag = h.ComputeHash(body);
+            byte[] all = new byte[body.Length + 32];
+            Buffer.BlockCopy(body, 0, all, 0, body.Length);
+            Buffer.BlockCopy(tag, 0, all, body.Length, 32);
+            return Convert.ToBase64String(all);
+        }
+    }
+
+    // null when the tag does not match
+    public static string Open(byte[] enc, byte[] mac, string b64)
+    {
+        try
+        {
+            byte[] all = Convert.FromBase64String(b64);
+            if (all.Length < 16 + 16 + 32) return null;
+            int bodyLen = all.Length - 32;
+            byte[] tag;
+            using (HMACSHA256 h = new HMACSHA256(mac)) tag = h.ComputeHash(all, 0, bodyLen);
+            int diff = 0;
+            for (int i = 0; i < 32; i++) diff |= tag[i] ^ all[bodyLen + i];
+            if (diff != 0) return null;
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = enc;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+                byte[] iv = new byte[16];
+                Buffer.BlockCopy(all, 0, iv, 0, 16);
+                aes.IV = iv;
+                using (ICryptoTransform x = aes.CreateDecryptor())
+                    return Encoding.UTF8.GetString(x.TransformFinalBlock(all, 16, bodyLen - 16));
+            }
+        }
+        catch { return null; }
     }
 }
 
@@ -3764,8 +3803,14 @@ class WebPanel : Form
             case "remote":                                      // the phone remote switch
                 try { Remote.Set(Convert.ToBoolean(m["on"])); } catch { }
                 break;
-            case "remote-new":                                  // a new pairing link
-                Remote.NewLink();
+            case "remote-code":                                 // "Pair a phone": ask the relay for a code
+                Remote.AskCode();
+                break;
+            case "remote-cancel":
+                Remote.CancelCode();
+                break;
+            case "remote-unpair":
+                try { Remote.Unpair((string)m["id"]); } catch { }
                 break;
             case "mouse":                                       // the switch in a controller's page
                 try
@@ -3813,8 +3858,7 @@ class WebPanel : Form
             { "mouseKey", Shortcuts.MouseText },
             { "upd", UpdateJson() },
             { "devices", DevicesJson() },
-            { "remote", new Dictionary<string, object> {
-                { "on", Remote.On }, { "url", Remote.On ? Remote.Url : null }, { "error", Remote.Error }, { "clients", Remote.Clients } } },
+            { "remote", RemoteJson() },
         });
     }
 
@@ -3835,6 +3879,19 @@ class WebPanel : Form
             { "progress", Updater.Progress },
             { "error", Updater.Error },
             { "checked", last == DateTime.MinValue ? 0 : (long)(last.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds },
+        };
+    }
+
+    // The phone remote section: on, connected to the relay, the pairing code on show (with when it
+    // runs out), and the paired phones.
+    static Dictionary<string, object> RemoteJson()
+    {
+        double left = Remote.Code == null ? 0 : (Remote.CodeUntil - DateTime.Now).TotalMilliseconds;
+        return new Dictionary<string, object> {
+            { "on", Remote.On }, { "online", Remote.Online }, { "error", Remote.Error },
+            { "code", left > 0 ? Remote.Code : null }, { "codeLeft", Math.Max(0, (long)left) },
+            { "phones", Remote.Phones.ConvertAll(delegate (Remote.Phone p) { return (object)new Dictionary<string, object> {
+                { "id", p.Id }, { "name", p.Name }, { "online", p.Online } }; }) },
         };
     }
 

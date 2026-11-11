@@ -152,19 +152,13 @@ static class Setup
         if (autostart) Shortcut(Path.Combine(StartupDir(allUsers), "Xdeck.lnk"), exe);
         else TryDelete(Path.Combine(StartupDir(allUsers), "Xdeck.lnk"));
         Register(allUsers, target);
-        if (allUsers) Firewall(exe, true);
+        if (allUsers) RemoveOldFirewallRule();
         StartAsUser(exe);
     }
 
-    // The phone remote's port (8765), open for Xdeck on private and domain networks only. Needs
-    // administrator, so only an install for everyone sets it; a per-user copy gets Windows' own prompt.
-    public static void Firewall(string exe, bool allow)
-    {
-        Netsh("advfirewall firewall delete rule name=\"Xdeck phone remote\"");
-        if (allow)
-            Netsh("advfirewall firewall add rule name=\"Xdeck phone remote\" dir=in action=allow program=\"" + exe +
-                  "\" protocol=TCP localport=8765 profile=private,domain enable=yes");
-    }
+    // Xdeck 0.5.0 opened port 8765 for its on-PC phone remote; the remote now goes through the
+    // relay at xdeck.skale.club and listens on nothing, so that rule goes.
+    static void RemoveOldFirewallRule() { Netsh("advfirewall firewall delete rule name=\"Xdeck phone remote\""); }
 
     static void Netsh(string args)
     {
@@ -292,7 +286,7 @@ static class Setup
     static int Remove(string target, bool allUsers)
     {
         StopXdeck();
-        if (allUsers) Firewall(null, false);
+        if (allUsers) RemoveOldFirewallRule();
         TryDelete(Path.Combine(MenuDir(allUsers), "Xdeck.lnk"));
         TryDelete(Path.Combine(StartupDir(allUsers), "Xdeck.lnk"));
         try

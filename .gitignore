@@ -3,3 +3,4 @@ dist/
 Data/
 *.exe
 *.pdb
+remote/.wrangler/

@@ -5,25 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1f1f22">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Xdeck">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="Your phone as touchpad, keyboard and remote for Xdeck on your PC.">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Xdeck Remote</title>
-<!-- Served by Xdeck.exe (Remote in src/Xdeck.cs) to a phone on the same network. The pairing key
-     arrives in the link's #k=..., is kept in localStorage, and opens the WebSocket at /ws?k=... -->
+<!-- The Xdeck phone remote (https://xdeck.skale.club). Pair once with the 6-digit code from the
+     Xdeck panel on the PC; after that the app connects by itself. Everything sent to the PC is
+     encrypted here (ECDH P-256 with the PC's key, then AES-CBC + HMAC-SHA256); the relay in
+     between only passes it on. Several PCs can be paired; the header switches between them. -->
 <style>
   :root {
     --bg: #1f1f22; --card: #2c2c2f; --hot: #38383c; --off: #3a3a3e; --text: #f2f2f4; --dim: #a0a0a8;
     --accent: #0a84ff; --green: #34c759; --red: #ff453a; --amber: #ffb340;
-    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
     font: 15px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
   body { display: flex; flex-direction: column; }
-  header { display: flex; align-items: center; gap: 10px; padding: 12px 16px 8px; }
-  header h1 { margin: 0; font-size: 17px; font-weight: 650; flex: 1; }
-  .gear { width: 22px; height: 22px; color: var(--accent); }
-  .status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); }
+  header { display: flex; align-items: center; gap: 10px; padding: calc(12px + var(--safe-t)) 16px 8px; }
+  .gear { width: 22px; height: 22px; color: var(--accent); flex: none; }
+  .pcbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--text);
+    font: 650 17px -apple-system, "Segoe UI", sans-serif; padding: 0; text-align: left; }
+  .pcbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pcbtn svg { width: 14px; height: 14px; color: var(--dim); flex: none; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); flex: none; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
   .status.on .dot { background: var(--green); }
   .status.bad .dot { background: var(--red); }
@@ -46,6 +56,7 @@
   .btn.big { min-height: 72px; }
   .btn.accent { background: var(--accent); color: #fff; }
   .btn.small { min-height: 44px; font-size: 13px; }
+  .btn:disabled { opacity: .5; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .lbl { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); margin: 6px 2px -4px; }
@@ -61,20 +72,45 @@
   .out.on .ck { visibility: visible; }
   .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); }
   .vol input { flex: 1; accent-color: var(--accent); height: 32px; }
-  .vol .pct { width: 44px; text-align: right; color: var(--dim); font-weight: 600; font-size: 13px; }
+  .vol .pct { width: 52px; text-align: right; color: var(--dim); font-weight: 600; font-size: 13px; }
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
   .vol svg { width: 24px; height: 24px; }
-  .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; }
-  .overlay { position: fixed; inset: 0; background: rgba(20,20,22,.94); display: none; place-items: center; text-align: center; padding: 30px; z-index: 5; }
-  .overlay.on { display: grid; }
-  .overlay h2 { margin: 0 0 8px; font-size: 19px; }
-  .overlay p { margin: 0; color: var(--dim); }
+  .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; margin: 0; }
+
+  /* pairing */
+  #pair { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: none; flex-direction: column; align-items: center;
+    padding: calc(40px + var(--safe-t)) 24px calc(24px + var(--safe-b)); gap: 18px; overflow-y: auto; text-align: center; }
+  #pair.on { display: flex; }
+  #pair .logo { width: 72px; height: 72px; border-radius: 18px; }
+  #pair h1 { margin: 0; font-size: 24px; }
+  #pair p { margin: 0; color: var(--dim); max-width: 330px; }
+  .steps { text-align: left; color: var(--dim); font-size: 14px; max-width: 330px; padding-left: 20px; margin: 0; }
+  .steps li { margin: 4px 0; }
+  .steps b { color: var(--text); }
+  .code { width: 100%; max-width: 330px; height: 64px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); text-align: center;
+    font: 700 32px ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .18em; outline: none; user-select: text; -webkit-user-select: text; }
+  .code::placeholder { color: #4a4a50; }
+  .code:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+  #pairErr { color: var(--red); min-height: 18px; font-size: 13.5px; }
+  #pair .btn { width: 100%; max-width: 330px; flex: none; }
+  .hint { font-size: 13px; color: var(--dim); max-width: 330px; }
+
+  /* PC menu */
+  #menu { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.45); display: none; }
+  #menu.on { display: block; }
+  .sheet { position: absolute; left: 12px; right: 12px; top: calc(56px + var(--safe-t)); background: #2a2a2d; border-radius: 14px; padding: 6px; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; }
+  .item:active { background: var(--hot); }
+  .item .nm { flex: 1; font-weight: 600; }
+  .item .ck { color: var(--accent); }
+  .item .rm { border: 0; background: none; color: var(--red); font-weight: 600; padding: 4px 6px; }
+  .sep { height: 1px; background: #3a3a3e; margin: 4px 8px; }
 </style>
 </head>
 <body>
 <header>
   <svg class="gear" viewBox="0 0 32 32"><path fill="currentColor" fill-rule="evenodd" d="M13.3 2h5.4l.8 3.6 2.4 1 3.1-2 3.8 3.8-2 3.1 1 2.4 3.6.8v5.4l-3.6.8-1 2.4 2 3.1-3.8 3.8-3.1-2-2.4 1-.8 3.6h-5.4l-.8-3.6-2.4-1-3.1 2-3.8-3.8 2-3.1-1-2.4L2 18.7v-5.4l3.6-.8 1-2.4-2-3.1 3.8-3.8 3.1 2 2.4-1zM16 11.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4z"/></svg>
-  <h1>Xdeck</h1>
+  <button class="pcbtn" id="pcBtn"><span id="pcName">Xdeck</span><svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <span class="status" id="status"><span class="dot"></span><span id="statusText">Connecting…</span></span>
 </header>
 
@@ -132,9 +168,9 @@
       <button class="btn big" data-vk="177" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5l-10 7 10 7z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
       <button class="btn big accent" data-vk="179" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path d="M5 4l9 8-9 8zM15 5v14M19.5 5v14" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
       <button class="btn big" data-vk="176" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
-      <button class="btn big" data-vk="174" aria-label="Volume down">Vol −</button>
-      <button class="btn big" data-vk="173" aria-label="Mute">Mute</button>
-      <button class="btn big" data-vk="175" aria-label="Volume up">Vol +</button>
+      <button class="btn big" data-vk="174">Vol −</button>
+      <button class="btn big" data-vk="173">Mute</button>
+      <button class="btn big" data-vk="175">Vol +</button>
     </div>
     <div class="row">
       <button class="btn" data-vk="178">Stop</button>
@@ -179,54 +215,217 @@
   <button data-tab="obs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>OBS</button>
 </nav>
 
-<div class="overlay" id="unpaired">
-  <div><h2>Not paired</h2><p>Open the Xdeck panel on the PC, turn on <b>Phone remote</b> and scan its QR code with this phone.</p></div>
+<div id="menu"><div class="sheet" id="sheet"></div></div>
+
+<div id="pair">
+  <img class="logo" src="/icon-192.png" alt="">
+  <h1>Pair with your PC</h1>
+  <ol class="steps">
+    <li>On the PC, open the <b>Xdeck</b> panel (the gear in the tray).</li>
+    <li>Turn on <b>Phone remote</b> and click <b>Pair a phone</b>.</li>
+    <li>Type the 6-digit code it shows:</li>
+  </ol>
+  <input class="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
+  <div id="pairErr"></div>
+  <button class="btn accent" id="pairBtn" disabled>Pair</button>
+  <button class="btn" id="installBtn" style="display:none">Install the app</button>
+  <p class="hint" id="iosHint" style="display:none">To keep it on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+  <button class="btn" id="pairCancel" style="display:none">Cancel</button>
 </div>
 
 <script>
 "use strict";
-// ------------------------------------------------------------ pairing + connection
-const KEY = "xdeck-remote-key";
-let key = null;
-try {
-  const m = /[#&]k=([\w-]+)/.exec(location.hash);
-  if (m) { localStorage.setItem(KEY, m[1]); history.replaceState(null, "", location.pathname); }
-  key = localStorage.getItem(KEY);
-} catch (e) {
-  const m = /[#&]k=([\w-]+)/.exec(location.hash);
-  key = m ? m[1] : null;
-}
+// ------------------------------------------------------------ helpers
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const vibrate = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) {} };
 
-const $status = document.getElementById("status"), $statusText = document.getElementById("statusText");
-let ws = null, retry = 600, pcName = "";
-function setStatus(cls, text) { $status.className = "status " + cls; $statusText.textContent = text; }
+// ------------------------------------------------------------ paired PCs (localStorage)
+// [{pc, phone, token, pcPub, pcName, priv (JWK)}]; "xdeck-current" is the pc id in use.
+const load = () => { try { return JSON.parse(localStorage.getItem("xdeck-pcs") || "[]"); } catch (_) { return []; } };
+const save = (list) => localStorage.setItem("xdeck-pcs", JSON.stringify(list));
+let pcs = load();
+let current = pcs.find((p) => p.pc === localStorage.getItem("xdeck-current")) || pcs[0] || null;
 
-function connect() {
-  if (!key) { document.getElementById("unpaired").classList.add("on"); setStatus("bad", "Not paired"); return; }
-  setStatus("", "Connecting…");
-  ws = new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(key)}`);
-  let opened = false;
-  ws.onopen = () => { opened = true; retry = 600; setStatus("on", pcName || "Connected"); };
-  ws.onmessage = (e) => { try { onState(JSON.parse(e.data)); } catch (_) {} };
-  ws.onclose = async () => {
-    ws = null;
-    setStatus("", "Reconnecting…");
-    // refused before opening: an old key (a new pairing link was made on the PC), or the PC is away
-    if (!opened) {
-      try {
-        const r = await fetch(`/check?k=${encodeURIComponent(key)}`, { cache: "no-store" });
-        if (r.status === 403) { document.getElementById("unpaired").classList.add("on"); setStatus("bad", "Not paired"); return; }
-      } catch (_) { setStatus("bad", "PC not reachable"); }
-    }
-    setTimeout(connect, retry);
-    retry = Math.min(retry * 2, 5000);
+// ------------------------------------------------------------ end-to-end encryption
+// Z = ECDH(phone private, PC public); AES key = SHA-256(01 || Z), HMAC key = SHA-256(02 || Z)
+// (the PC derives the same with ECDiffieHellmanCng). A message: base64(iv || AES-CBC || HMAC(iv || ct)).
+let keys = null;
+async function deriveKeys(p) {
+  const priv = await crypto.subtle.importKey("jwk", p.priv, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+  const pub = await crypto.subtle.importKey("raw", unb64(p.pcPub), { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const z = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, priv, 256));
+  const k = async (n) => { const x = new Uint8Array(33); x[0] = n; x.set(z, 1); return crypto.subtle.digest("SHA-256", x); };
+  return {
+    enc: await crypto.subtle.importKey("raw", await k(1), "AES-CBC", false, ["encrypt", "decrypt"]),
+    mac: await crypto.subtle.importKey("raw", await k(2), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]),
   };
 }
-function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+async function seal(obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(16));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv }, keys.enc, new TextEncoder().encode(JSON.stringify(obj))));
+  const body = new Uint8Array(16 + ct.length); body.set(iv); body.set(ct, 16);
+  const tag = new Uint8Array(await crypto.subtle.sign("HMAC", keys.mac, body));
+  const all = new Uint8Array(body.length + 32); all.set(body); all.set(tag, body.length);
+  return b64(all);
+}
+async function open(text) {
+  const all = unb64(text);
+  if (all.length < 16 + 16 + 32) throw new Error("short");
+  const body = all.slice(0, all.length - 32), tag = all.slice(all.length - 32);
+  if (!(await crypto.subtle.verify("HMAC", keys.mac, tag, body))) throw new Error("bad tag");
+  const pt = await crypto.subtle.decrypt({ name: "AES-CBC", iv: body.slice(0, 16) }, keys.enc, body.slice(16));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+// ------------------------------------------------------------ connection
+const $status = $("status"), $statusText = $("statusText");
+let ws = null, retry = 700, chain = Promise.resolve(), gen = 0;
+function setStatus(cls, text) { $status.className = "status " + cls; $statusText.textContent = text; }
+
+async function connect() {
+  const my = ++gen;
+  if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+  if (!current) { showPair(false); return; }
+  $("pcName").textContent = current.pcName || "PC";
+  try { keys = await deriveKeys(current); } catch (e) { setStatus("bad", "Pair again"); showPair(true); return; }
+  setStatus("", "Connecting…");
+  const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/phone?pc=${encodeURIComponent(current.pc)}&phone=${encodeURIComponent(current.phone)}&token=${encodeURIComponent(current.token)}`;
+  const s = new WebSocket(url);
+  ws = s;
+  let opened = false;
+  s.onopen = () => { opened = true; retry = 700; };
+  s.onmessage = async (e) => {
+    if (my !== gen) return;
+    if (e.data[0] === "{") {                          // from the relay
+      const m = JSON.parse(e.data);
+      if (m.t === "pc") {
+        if (m.name) { current.pcName = m.name; $("pcName").textContent = m.name; save(pcs); }
+        setStatus(m.online ? "on" : "bad", m.online ? "Connected" : "PC offline");
+        if (m.online) send({ t: "state" });
+      }
+      return;
+    }
+    try { onState(await open(e.data)); } catch (_) {}
+  };
+  s.onclose = (e) => {
+    if (my !== gen) return;
+    ws = null;
+    if (e.code === 4003 || (!opened && e.code === 1006 && retry >= 5600)) {
+      // unpaired on the PC (or refused again and again): this phone has to pair again
+      setStatus("bad", "Not paired");
+      if (e.code === 4003) { removePc(current.pc, false); return; }
+    } else setStatus("", navigator.onLine ? "Reconnecting…" : "No internet");
+    setTimeout(() => { if (my === gen) connect(); }, retry);
+    retry = Math.min(retry * 2, 8000);
+  };
+}
+
+function send(m) {
+  if (!ws || ws.readyState !== 1 || !keys) return;
+  const s = ws;
+  chain = chain.then(async () => { const d = await seal(m); if (s.readyState === 1) s.send(d); }).catch(() => {});
+}
+
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (!ws) connect(); else send({ t: "state" }); } });
+window.addEventListener("online", () => { if (!ws) connect(); });
+
+// ------------------------------------------------------------ pairing
+const codeBox = $("code");
+let installEvent = null;
+function codeValue() { return codeBox.value.replace(/\D/g, ""); }
+function showPair(cancellable) {
+  $("pair").classList.add("on");
+  $("pairCancel").style.display = cancellable && pcs.length ? "" : "none";
+  $("pairErr").textContent = "";
+  codeBox.value = "";
+  $("pairBtn").disabled = true;
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  $("iosHint").style.display = /iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone ? "" : "none";
+  $("installBtn").style.display = installEvent && !standalone ? "" : "none";
+  setTimeout(() => codeBox.focus(), 50);
+}
+// digits only, shown as "123 456"; pairs as soon as all six are in
+codeBox.addEventListener("input", () => {
+  const d = codeValue().slice(0, 6);
+  codeBox.value = d.length > 3 ? d.slice(0, 3) + " " + d.slice(3) : d;
+  $("pairBtn").disabled = d.length !== 6;
+  if (d.length === 6) pair();
+});
+$("pairBtn").addEventListener("click", pair);
+$("pairCancel").addEventListener("click", () => $("pair").classList.remove("on"));
+
+function deviceName() {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/iPad/.test(ua)) return "iPad";
+  const m = /Android [\d.]+; ([^;)]+?)(?: Build|\))/.exec(ua);
+  return m && m[1] && m[1] !== "K" ? m[1].trim() : /Android/.test(ua) ? "Android phone" : "Phone";
+}
+
+let pairing = false;
+async function pair() {
+  if (pairing || codeValue().length !== 6) return;
+  pairing = true;
+  $("pairBtn").disabled = true;
+  $("pairErr").textContent = "";
+  try {
+    const kp = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const pub = b64(await crypto.subtle.exportKey("raw", kp.publicKey));
+    const priv = await crypto.subtle.exportKey("jwk", kp.privateKey);
+    const r = await fetch("/pair", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: codeValue(), pub, name: deviceName() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Could not pair. Try again.");
+    const entry = { pc: j.pc, phone: j.phone, token: j.token, pcPub: j.pcPub, pcName: j.pcName, priv };
+    pcs = pcs.filter((p) => p.pc !== entry.pc).concat([entry]);
+    save(pcs);
+    current = entry;
+    localStorage.setItem("xdeck-current", entry.pc);
+    $("pair").classList.remove("on");
+    vibrate(20);
+    connect();
+  } catch (e) {
+    $("pairErr").textContent = e.message === "Failed to fetch" ? "No internet connection." : e.message;
+    codeBox.value = "";
+    codeBox.focus();
+  } finally {
+    pairing = false;
+  }
+}
+
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; if ($("pair").classList.contains("on")) $("installBtn").style.display = ""; });
+$("installBtn").addEventListener("click", async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $("installBtn").style.display = "none"; });
+
+// ------------------------------------------------------------ PC menu: switch, add, remove
+$("pcBtn").addEventListener("click", () => {
+  let h = pcs.map((p) => `<div class="item" data-pc="${esc(p.pc)}"><span class="nm">${esc(p.pcName || "PC")}</span>${p === current ? '<span class="ck">✓</span>' : ""}<button class="rm" data-rm="${esc(p.pc)}">Remove</button></div>`).join("");
+  h += `<div class="sep"></div><div class="item" data-add="1"><span class="nm">+ Pair another PC</span></div>`;
+  if (installEvent) h += `<div class="item" data-install="1"><span class="nm">Install the app</span></div>`;
+  $("sheet").innerHTML = h;
+  $("menu").classList.add("on");
+});
+$("menu").addEventListener("click", (e) => {
+  const rm = e.target.closest("[data-rm]"), it = e.target.closest(".item");
+  $("menu").classList.remove("on");
+  if (rm) { if (confirm("Remove this PC from the phone?")) removePc(rm.dataset.rm, true); return; }
+  if (!it) return;
+  if (it.dataset.add) return showPair(true);
+  if (it.dataset.install) return $("installBtn").click();
+  const p = pcs.find((x) => x.pc === it.dataset.pc);
+  if (p && p !== current) { current = p; localStorage.setItem("xdeck-current", p.pc); connect(); }
+});
+function removePc(id, reconnect) {
+  pcs = pcs.filter((p) => p.pc !== id);
+  save(pcs);
+  if (current && current.pc === id) current = pcs[0] || null;
+  if (current) localStorage.setItem("xdeck-current", current.pc);
+  if (reconnect || !current) connect();
+}
 
 // ------------------------------------------------------------ tabs
-document.getElementById("tabs").addEventListener("click", (e) => {
+$("tabs").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-tab]");
   if (!b) return;
   document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
@@ -237,7 +436,7 @@ document.getElementById("tabs").addEventListener("click", (e) => {
 // ------------------------------------------------------------ touchpad
 // One finger moves (faster swipes go further), a tap clicks, two fingers scroll, a two-finger
 // tap right-clicks, and holding still for half a second grabs (left button down) until release.
-const pad = document.getElementById("pad");
+const pad = $("pad");
 const touches = new Map();
 let moved = 0, startAt = 0, maxFingers = 0, holdTimer = 0, dragging = false, acc = { x: 0, y: 0 }, scrollAcc = 0, hscrollAcc = 0, frame = 0;
 const SPEED = 1.6, NOTCH = 22;
@@ -247,7 +446,6 @@ function flush() {
   const dx = Math.round(acc.x), dy = Math.round(acc.y);
   if (dx || dy) { send({ t: "move", dx, dy }); acc.x -= dx; acc.y -= dy; }
 }
-
 pad.addEventListener("pointerdown", (e) => {
   pad.setPointerCapture(e.pointerId);
   touches.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
@@ -255,12 +453,11 @@ pad.addEventListener("pointerdown", (e) => {
     moved = 0; startAt = e.timeStamp; maxFingers = 1; scrollAcc = 0; hscrollAcc = 0;
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {
-      if (touches.size === 1 && moved < 8) { dragging = true; pad.classList.add("drag"); send({ t: "click", b: 0, down: true }); navigator.vibrate && navigator.vibrate(15); }
+      if (touches.size === 1 && moved < 8) { dragging = true; pad.classList.add("drag"); send({ t: "click", b: 0, down: true }); vibrate(15); }
     }, 500);
   }
   maxFingers = Math.max(maxFingers, touches.size);
 });
-
 pad.addEventListener("pointermove", (e) => {
   const p = touches.get(e.pointerId);
   if (!p) return;
@@ -268,19 +465,17 @@ pad.addEventListener("pointermove", (e) => {
   p.x = e.clientX; p.y = e.clientY; p.t = e.timeStamp;
   moved += Math.abs(dx) + Math.abs(dy);
   if (touches.size >= 2) {
-    // two fingers: each finger reports half of the gesture
     scrollAcc += dy / touches.size; hscrollAcc += dx / touches.size;
     const n = Math.trunc(scrollAcc / NOTCH), hn = Math.trunc(hscrollAcc / NOTCH);
     if (n) { send({ t: "scroll", v: n * 120 }); scrollAcc -= n * NOTCH; }
     if (hn) { send({ t: "scroll", h: -hn * 120 }); hscrollAcc -= hn * NOTCH; }
     return;
   }
-  const v = Math.hypot(dx, dy) / dt;                 // px per ms
-  const gain = SPEED * (1 + Math.min(2.5, v * 1.4));  // acceleration
+  const v = Math.hypot(dx, dy) / dt;
+  const gain = SPEED * (1 + Math.min(2.5, v * 1.4));
   acc.x += dx * gain; acc.y += dy * gain;
   if (!frame) frame = requestAnimationFrame(flush);
 });
-
 function lift(e) {
   if (!touches.has(e.pointerId)) return;
   touches.delete(e.pointerId);
@@ -293,9 +488,8 @@ function lift(e) {
 pad.addEventListener("pointerup", lift);
 pad.addEventListener("pointercancel", lift);
 
-// buttons: held as long as the finger stays (drag with the other hand)
 function holdButton(id, b) {
-  const el = document.getElementById(id);
+  const el = $(id);
   el.addEventListener("pointerdown", (e) => { e.preventDefault(); el.classList.add("held"); send({ t: "click", b, down: true }); });
   const up = () => { if (el.classList.contains("held")) { el.classList.remove("held"); send({ t: "click", b, down: false }); } };
   el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("pointerleave", up);
@@ -305,7 +499,7 @@ holdButton("lbtn", 0); holdButton("mbtn", 2); holdButton("rbtn", 1);
 // ------------------------------------------------------------ keyboard
 // What changes in the box goes to the PC: new characters as text, removed ones as Backspace
 // (autocorrect replacing a word works the same way).
-const typing = document.getElementById("typing");
+const typing = $("typing");
 let last = "";
 typing.addEventListener("input", () => {
   const now = typing.value;
@@ -320,43 +514,35 @@ typing.addEventListener("input", () => {
 typing.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendKey(13); typing.value = ""; last = ""; }
 });
-
 const mods = new Set();
 document.querySelectorAll("[data-mod]").forEach((b) => b.addEventListener("click", () => {
   const m = b.dataset.mod;
   if (mods.has(m)) mods.delete(m); else mods.add(m);
   b.classList.toggle("on", mods.has(m));
 }));
-function sendKey(vk, extra) {
-  const all = new Set([...(extra || []), ...mods]);
-  send({ t: "key", vk, mods: [...all] });
-}
+function sendKey(vk, extra) { send({ t: "key", vk, mods: [...new Set([...(extra || []), ...mods])] }); }
 function clearMods() { mods.clear(); document.querySelectorAll("[data-mod]").forEach((b) => b.classList.remove("on")); }
-
 document.querySelectorAll("[data-vk]").forEach((b) => b.addEventListener("click", () => {
   sendKey(+b.dataset.vk);
   if (b.closest("#tab-keys")) clearMods();
-  navigator.vibrate && navigator.vibrate(8);
+  vibrate(8);
 }));
 document.querySelectorAll("[data-combo]").forEach((b) => b.addEventListener("click", () => {
   const parts = b.dataset.combo.split("+");
   send({ t: "key", vk: +parts.pop(), mods: parts });
-  navigator.vibrate && navigator.vibrate(8);
+  vibrate(8);
 }));
 
 // ------------------------------------------------------------ audio
-const $outs = document.getElementById("outs"), $vol = document.getElementById("vol"), $volPct = document.getElementById("volPct");
+const $outs = $("outs"), $vol = $("vol"), $volPct = $("volPct");
 let sliding = false, volTimer = 0;
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
 function onState(m) {
   if (m.t !== "state") return;
-  if (m.pc) { pcName = m.pc; setStatus("on", pcName); }
   $outs.innerHTML = (m.outs || []).map((o) =>
     `<div class="out${o.id === m.def ? " on" : ""}" data-id="${esc(o.id)}"><span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
     `<p class="note">No audio output connected</p>`;
   if (!sliding) { $vol.value = Math.round((m.vol || 0) * 100); $volPct.textContent = m.mute ? "Muted" : $vol.value + "%"; }
-  document.getElementById("muteWaves").style.opacity = m.mute ? .25 : 1;
+  $("muteWaves").style.opacity = m.mute ? .25 : 1;
 }
 $outs.addEventListener("click", (e) => {
   const o = e.target.closest(".out");
@@ -371,14 +557,12 @@ $vol.addEventListener("input", () => {
   volTimer = setTimeout(() => send({ t: "vol", v: $vol.value / 100 }), 40);
 });
 $vol.addEventListener("change", () => { sliding = false; send({ t: "vol", v: $vol.value / 100 }); });
-document.getElementById("muteBtn").addEventListener("click", () => send({ t: "mute" }));
+$("muteBtn").addEventListener("click", () => send({ t: "mute" }));
 
 // ------------------------------------------------------------ OBS
-document.querySelectorAll("[data-obs]").forEach((b) => b.addEventListener("click", () => {
-  send({ t: "obs", a: b.dataset.obs });
-  navigator.vibrate && navigator.vibrate(12);
-}));
+document.querySelectorAll("[data-obs]").forEach((b) => b.addEventListener("click", () => { send({ t: "obs", a: b.dataset.obs }); vibrate(12); }));
 
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 connect();
 </script>
 </body>

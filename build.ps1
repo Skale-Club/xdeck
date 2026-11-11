@@ -40,7 +40,7 @@ Set-Content "$tmp\AssemblyInfo.cs" -Encoding utf8 -Value @(
 & $csc /nologo /target:winexe /platform:x64 /codepage:65001 /optimize+ `
     "/win32manifest:$root\src\app.manifest" "/win32icon:$tmp\Xdeck.ico" `
     "/r:$lib\Microsoft.Web.WebView2.Core.dll" "/r:$lib\Microsoft.Web.WebView2.WinForms.dll" /r:System.Web.Extensions.dll `
-    /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
+    /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /r:System.Security.dll /r:System.Core.dll `
     "/out:$out\Xdeck.exe" (Join-Path $root 'src\Xdeck.cs') "$tmp\AssemblyInfo.cs"
 if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
 Copy-Item "$lib\*.dll" $out

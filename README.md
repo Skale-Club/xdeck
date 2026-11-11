@@ -143,8 +143,15 @@ OBS on another PC: set `obs.address` to its IP and port.
 
 ## Phone remote
 
-Turn on **Phone remote** in the panel and point a phone's camera at the QR code (the phone must be
-on the same Wi-Fi). The link opens a page that makes the phone:
+The **Xdeck Remote** app makes a phone (Android or iPhone) a remote for the PC, from anywhere:
+
+1. On the phone, open **[xdeck.skale.club](https://xdeck.skale.club)** and install it: Android
+   offers **Install the app**; on iPhone tap **Share › Add to Home Screen**.
+2. On the PC, turn on **Phone remote** in the Xdeck panel and click **Pair a phone**.
+3. Type the 6-digit code from the panel in the app. That is all: from then on the app connects by
+   itself. Several PCs can be paired (the PC name at the top switches between them).
+
+The app makes the phone:
 
 | Tab | What it does |
 |---|---|
@@ -154,10 +161,16 @@ on the same Wi-Fi). The link opens a page that makes the phone:
 | **Audio** | Switch the audio output, volume and mute |
 | **OBS** | Record, pause, stream, save replay, scenes, virtual camera |
 
-Nothing to install on the phone; add the page to the home screen to open it like an app. Only a
-phone that opened the pairing link can send anything, and **New link** unpairs every phone. Xdeck
-listens on port 8765; an install for everyone opens it in the firewall for private networks, and a
-copy installed only for you gets Windows' own prompt the first time.
+Phone and PC meet through a relay at xdeck.skale.club (a Cloudflare Worker, `remote/`), so the phone
+works on mobile data too and the PC opens no port. Everything between them is encrypted end to end
+(ECDH P-256 keys exchanged at pairing, then AES + HMAC): the relay only passes it on. The panel lists
+the paired phones (a dot when connected) with **Remove**.
+
+Deploy the relay and the app (from a normal terminal, logged in with `wrangler login`):
+
+```powershell
+cd remote; wrangler deploy
+```
 
 ## Switch the audio output without the panel
 
@@ -234,11 +247,12 @@ pelo próprio controle.
   instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por
   atualização. As configurações ficam. Quando chega uma versão nova, o rodapé do painel mostra
   **Updates** com a barra de progresso e **Restart to update**; fora isso, só a versão.
-- **Controle pelo celular (tipo Unified Remote):** ligue **Phone remote** no painel e aponte a câmera
-  do celular para o QR code (mesmo Wi-Fi). O celular vira touchpad (toque = clique, dois dedos =
-  rolar, segurar = arrastar), teclado (o que você digita vai para o PC), teclas de mídia, troca de
-  saída de áudio e volume, e botões do OBS. Não precisa instalar nada no celular; dá para adicionar à
-  tela inicial. Só o celular pareado pelo link controla; **New link** despareia todos.
+- **Controle pelo celular (tipo Unified Remote):** no celular, abra **xdeck.skale.club** e instale o
+  app (Android: **Install the app**; iPhone: **Compartilhar › Adicionar à Tela de Início**). No PC,
+  ligue **Phone remote** no painel e clique em **Pair a phone**; digite o código de 6 dígitos no app,
+  uma vez só. Depois ele conecta sozinho, de qualquer lugar (até no 4G). O celular vira touchpad,
+  teclado, teclas de mídia, troca de saída de áudio e volume, e botões do OBS. Tudo vai criptografado
+  de ponta a ponta; o painel lista os celulares pareados com **Remove**.
 - **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel como círculos embaixo dos
   controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.

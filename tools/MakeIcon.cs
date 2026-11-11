@@ -14,7 +14,17 @@ static class MakeIcon
 {
     static int Main(string[] args)
     {
-        if (args.Length != 1) { Console.Error.WriteLine("usage: MakeIcon <out.ico>"); return 1; }
+        // MakeIcon --png <dir>: the phone remote app's icons (remote\public)
+        if (args.Length == 2 && args[0] == "--png")
+        {
+            Directory.CreateDirectory(args[1]);
+            Save(Draw(192), Path.Combine(args[1], "icon-192.png"));
+            Save(Draw(512), Path.Combine(args[1], "icon-512.png"));
+            Save(Draw(512, true), Path.Combine(args[1], "icon-maskable-512.png"));   // Android crops it to its own shape
+            Save(Draw(180, true), Path.Combine(args[1], "apple-touch-icon.png"));    // iOS rounds the corners itself
+            return 0;
+        }
+        if (args.Length != 1) { Console.Error.WriteLine("usage: MakeIcon <out.ico> | MakeIcon --png <dir>"); return 1; }
         int[] sizes = { 16, 20, 24, 32, 40, 48, 64, 256 };
         List<byte[]> images = new List<byte[]>();
         foreach (int s in sizes)
@@ -38,19 +48,25 @@ static class MakeIcon
         return 0;
     }
 
-    static Bitmap Draw(int s)
+    static void Save(Bitmap b, string path) { using (b) b.Save(path, ImageFormat.Png); }
+
+    // fullBleed: the blue fills the square (for icons the system masks), with the gear inside the
+    // centre 80% that every mask keeps
+    static Bitmap Draw(int s, bool fullBleed = false)
     {
         Bitmap bmp = new Bitmap(s, s, PixelFormat.Format32bppArgb);
         using (Graphics g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            float pad = s <= 20 ? 0 : s * 0.04f, side = s - 2 * pad, r = side * 0.22f;
+            float pad = fullBleed || s <= 20 ? 0 : s * 0.04f, side = s - 2 * pad, r = side * 0.22f;
             RectangleF box = new RectangleF(pad, pad, side, side);
-            using (GraphicsPath tile = Rounded(box, r))
             using (LinearGradientBrush fill = new LinearGradientBrush(box, Color.FromArgb(0x1A, 0x8C, 0xE6), Color.FromArgb(0x00, 0x62, 0xB8), 90f))
-                g.FillPath(fill, tile);
-            Gear(g, s / 2f, s / 2f, side * (s <= 24 ? 0.40f : 0.34f), Color.White);
+            {
+                if (fullBleed) g.FillRectangle(fill, box);
+                else using (GraphicsPath tile = Rounded(box, r)) g.FillPath(fill, tile);
+            }
+            Gear(g, s / 2f, s / 2f, side * (fullBleed ? 0.28f : s <= 24 ? 0.40f : 0.34f), Color.White);
         }
         return bmp;
     }
