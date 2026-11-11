@@ -217,22 +217,22 @@ function panelHtml() {
 }
 
 // ------------------------------------------------------------ phone remote
-// Off: one switch. On: "Pair a phone" (a 6-digit code the phone types in the Xdeck Remote app at
-// xdeck.skale.club, with how long it is still good) and the paired phones, each removable.
+// Always on (the Xdeck Remote app at xdeck.skale.club is the remote): how it is connected,
+// "Pair a phone" (a 6-digit code the phone types in the app, with how long it is still good) and
+// the paired phones, each removable.
 let codeDeadline = 0, codeTimer = 0;
 function remoteHtml() {
   const r = state.remote;
   if (!r) return "";
   const online = (r.phones || []).filter((p) => p.online).length;
-  const sub = !r.on ? "Your phone as touchpad, keyboard and remote" :
-    !r.online ? (r.error ? "Can't connect · " + esc(r.error) : "Connecting…") :
-    online ? `${online} phone${online > 1 ? "s" : ""} connected` : (r.phones || []).length ? "Ready" : "Pair a phone to start";
+  const sub = !r.online ? (r.error ? "Can't connect · " + esc(r.error) : "Connecting…") :
+    online ? `${online} phone${online > 1 ? "s" : ""} connected` : (r.phones || []).length ? "Open the Xdeck app on your phone" : "Use your phone as touchpad and keyboard";
+  const pairBtn = r.online && !r.code ? `<button class="upd-btn" data-act="remote-code" data-nav="remote-code">Pair a phone</button>` : "";
   let h = `<h2>Phone remote</h2>
-    <div class="card switch-row" data-act="remote" data-nav="remote" role="switch" aria-checked="${r.on ? "true" : "false"}">
+    <div class="card upd">
       <span class="disc">${I.phone}</span>
       <span class="who"><div class="nm">Phone remote</div><div class="sub">${sub}</div></span>
-      <span class="switch${r.on ? " on" : ""}"><b></b></span></div>`;
-  if (!r.on) return h;
+      ${pairBtn}</div>`;
   if (r.code) {
     const left = Math.max(0, Math.round((codeDeadline - Date.now()) / 1000));
     h += `<div class="remote-pair">
@@ -242,8 +242,6 @@ function remoteHtml() {
           <div class="remote-left" id="codeLeft">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</div>
           <button class="upd-btn" data-act="remote-cancel" data-nav="remote-cancel">Cancel</button>
         </div></div>`;
-  } else if (r.online) {
-    h += `<button class="upd-btn pair-btn" data-act="remote-code" data-nav="remote-code">Pair a phone</button>`;
   }
   if ((r.phones || []).length) {
     h += `<div class="phone-list">`;
@@ -789,7 +787,6 @@ $app.addEventListener("click", (e) => {
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
   else if (act === "update") send({ type: "update" });
-  else if (act === "remote") send({ type: "remote", on: !(state.remote && state.remote.on) });
   else if (act === "remote-code") send({ type: "remote-code" });
   else if (act === "remote-cancel") send({ type: "remote-cancel" });
   else if (act === "remote-unpair") send({ type: "remote-unpair", id: t.dataset.id });

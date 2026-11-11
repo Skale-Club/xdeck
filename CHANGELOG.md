@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 — 2026-11-11
+
+- Phone remote has no on/off switch any more: Xdeck is always ready for the Xdeck Remote app. The
+  panel shows how it is connected, **Pair a phone** and the paired phones.
+
 ## 0.6.0 — 2026-11-11
 
 - **Xdeck Remote is an app now**, installable on Android and iPhone from

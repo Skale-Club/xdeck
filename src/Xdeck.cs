@@ -2406,7 +2406,6 @@ static class Remote
         try
         {
             Dictionary<string, object> d = json.Deserialize<Dictionary<string, object>>(File.ReadAllText(ConfigFile));
-            On = d.ContainsKey("on") && d["on"] is bool && (bool)d["on"];
             pcId = d.ContainsKey("pc") ? d["pc"] as string : null;
             secret = Unprotect(d.ContainsKey("secret") ? d["secret"] as string : null);
             string k = Unprotect(d.ContainsKey("key") ? d["key"] as string : null);
@@ -2430,7 +2429,9 @@ static class Remote
             lock (phones) phones.Clear();
             Save();
         }
-        if (On) Start();
+        // always connected: the phone app is the remote, there is nothing to turn on
+        On = true;
+        Start();
     }
 
     static void Save()
@@ -2440,7 +2441,7 @@ static class Remote
             List<object> list = new List<object>();
             foreach (Phone p in Phones) list.Add(new Dictionary<string, object> { { "id", p.Id }, { "name", p.Name }, { "pub", p.Pub } });
             File.WriteAllText(ConfigFile, json.Serialize(new Dictionary<string, object> {
-                { "on", On }, { "pc", pcId }, { "secret", Protect(secret) },
+                { "pc", pcId }, { "secret", Protect(secret) },
                 { "key", Protect(Convert.ToBase64String(key.Export(CngKeyBlobFormat.EccPrivateBlob))) }, { "phones", list } }));
         }
         catch { }
@@ -2459,15 +2460,6 @@ static class Remote
     }
 
     // ------------------------------------------------ panel actions
-    public static void Set(bool on)
-    {
-        On = on;
-        Save();
-        if (on) Start();
-        else { Code = null; Close(); }
-        Notify();
-    }
-
     public static void AskCode()
     {
         if (!Online) return;
@@ -3799,9 +3791,6 @@ class WebPanel : Form
                 break;
             case "check":                                       // "Check now" / "Try again"
                 Updater.CheckNow();
-                break;
-            case "remote":                                      // the phone remote switch
-                try { Remote.Set(Convert.ToBoolean(m["on"])); } catch { }
                 break;
             case "remote-code":                                 // "Pair a phone": ask the relay for a code
                 Remote.AskCode();
