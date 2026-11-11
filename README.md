@@ -51,9 +51,17 @@ Xdeck lives in the system tray as a gear:
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
 | **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. |
 
-When a controller connects, a banner at the top left of the screen names it with its battery (the
-pills and the percent, *charging*, or `USB`). When a wireless controller drops to 15%, a banner warns
-once (and again only after it has charged).
+## Devices that connect
+
+Every device that connects shows up in a banner at the top left of the screen: a controller, a
+Bluetooth device (headphones, mouse, keyboard, phone, speaker) or a USB device (a pen drive, a headset,
+a keyboard, a phone), with its battery when it reports one (the pills and the percent, *charging*;
+a controller on a cable says `USB`). Several at once come one after another. When a wireless device
+drops to 15%, a banner warns once (and again only after it has charged).
+
+A headset that brings its own audio output and microphone gets one banner, not three. Devices that
+come back within a minute (a Bluetooth mouse waking up), devices built into the PC, and everything
+that reconnects when the PC wakes up get none.
 
 The controller test shows the real controller: Xbox, DualSense, Pro Controller and Joy-Cons light up
 button by button; the G29 shows the wheel angle and pedals; the handbrake shows the lever.
@@ -203,9 +211,12 @@ pelo próprio controle.
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).
-- **Controle conectado:** ao ligar um controle, um aviso no canto da tela mostra o nome e a bateria
-  (as barrinhas e a porcentagem, *charging* ou `USB`). Quando um controle sem fio chega a 15%, um
-  aviso aparece uma vez (e de novo só depois de carregar).
+- **Dispositivo conectado:** qualquer dispositivo que conectar aparece num aviso no canto da tela —
+  controle, Bluetooth (fone, mouse, teclado, celular, caixa de som) ou USB (pendrive, headset,
+  teclado, celular) — com a bateria quando ele informa (barrinhas e porcentagem, *charging*). Quando
+  um dispositivo sem fio chega a 15%, um aviso aparece uma vez (e de novo só depois de carregar).
+  Headset com saída de áudio e microfone gera um aviso só; dispositivos internos do PC, os que voltam
+  em menos de um minuto e os que reconectam quando o PC acorda não geram aviso.
 - **Testar um controle:** clique no cartão dele no painel.
 - **Painel pelo controle:** segure **L1 + direcional direita** e aperte **triângulo** (Xbox: LB +
   direita + Y). A mesma combinação esconde o painel e devolve o foco ao jogo. Com o painel aberto, tudo funciona pelo controle: direcional ou analógico esquerdo

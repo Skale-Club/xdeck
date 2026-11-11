@@ -5,7 +5,8 @@
 //  - Ctrl+Alt+F11 / Ctrl+Alt+F10, or hold D-pad right + L1 and flick the right stick, switch the
 //    playback device forward / back; Data\devices.txt optionally sets the order.
 //  - L1 + D-pad right + Triangle opens / hides the panel, which the controller then drives.
-//  - A banner shows each controller that connects, with its battery, and warns when one runs low.
+//  - A banner shows each device that connects (controller, Bluetooth, USB) with its battery, and
+//    warns when one runs low.
 //  - obs.* controller shortcuts drive OBS Studio (record, stream, scenes, ...) over its WebSocket.
 //  - Every shortcut above can be changed in shortcuts.ini (read again on save, no new build).
 // Build with ..\build.ps1 (C# 5 / .NET Framework 4.8: no string interpolation, no ?. operator).
@@ -858,6 +859,22 @@ class Pad
     public string Conn = "Bluetooth";
 }
 
+// Anything Xdeck announces when it connects: a controller, a Bluetooth device or a USB device.
+class Device
+{
+    public string Key;          // stable: the controller's / Bluetooth address, the USB instance ID
+    public string Name;
+    public string Glyph = "usb";    // banner icon
+    public string Conn = "USB";     // USB | Bluetooth
+    public int Battery = -1;    // percent, -1 unknown or none
+    public bool Charging, Connected, Pad;
+
+    public static Device Of(Pad p)
+    {
+        return new Device { Key = p.Mac, Name = p.Name, Glyph = "pad", Conn = p.Conn, Battery = p.Battery, Charging = p.Charging, Connected = true, Pad = true };
+    }
+}
+
 static class Pads
 {
     [StructLayout(LayoutKind.Sequential)] struct DEVPROPKEY { public Guid fmtid; public uint pid; }
@@ -982,6 +999,107 @@ static class Pads
             pads.Add(new Pad { Mac = "usb-" + w[1], Kind = w[1], Name = w[2], Connected = true, Conn = "USB" });
         }
         return pads;
+    }
+
+    // ------------------------------------------------------------ other devices
+    // Everything else Xdeck announces when it connects: Bluetooth devices that are not controllers
+    // (headphones, mice, keyboards, phones), and USB devices plugged into the PC.
+    static readonly DEVPROPKEY KeyDesc = new DEVPROPKEY { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 2 };
+    static readonly DEVPROPKEY KeyBusName = new DEVPROPKEY { fmtid = new Guid("540b947e-8b40-45bc-a8a2-6a0b894cbda2"), pid = 4 };
+    static readonly DEVPROPKEY KeyInternal = new DEVPROPKEY { fmtid = new Guid("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c"), pid = 4 }; // InLocalMachineContainer
+    static readonly Guid UsbDeviceInterface = new Guid("A5DCBF10-6530-11D2-901F-00C04FB951ED");
+    static readonly IntPtr NoSet = new IntPtr(-1);
+
+    static string Text(byte[] b) { return b == null ? "" : Encoding.Unicode.GetString(b).TrimEnd('\0').Trim(); }
+
+    // Connected Bluetooth devices that are not controllers. The battery sits on the device node
+    // (Bluetooth LE) or on one of its service nodes (a headset's hands-free profile), whose
+    // instance IDs carry the device's address.
+    public static List<Device> Bluetooth()
+    {
+        List<Device> devs = new List<Device>();
+        List<KeyValuePair<string, int>> batteries = new List<KeyValuePair<string, int>>();
+        foreach (string enumerator in new string[] { "BTHLE", "BTHENUM", "BTHLEDEVICE" })
+        {
+            IntPtr set = SetupDiGetClassDevs(IntPtr.Zero, enumerator, IntPtr.Zero, 0x4 | 0x2); // ALLCLASSES | PRESENT
+            if (set == NoSet) continue;
+            SP_DEVINFO_DATA d = new SP_DEVINFO_DATA();
+            d.cbSize = Marshal.SizeOf(d);
+            for (int i = 0; SetupDiEnumDeviceInfo(set, i, ref d); i++)
+            {
+                StringBuilder sb = new StringBuilder(512); int req;
+                if (!SetupDiGetDeviceInstanceId(set, ref d, sb, sb.Capacity, out req)) continue;
+                string id = sb.ToString().ToUpperInvariant();
+                byte[] bat = Prop(set, ref d, KeyBattery);
+                int battery = bat != null && bat.Length > 0 && bat[0] <= 100 ? bat[0] : -1;
+                Match m = Regex.Match(id, @"^BTH(LE|ENUM)\\DEV_([0-9A-F]{12})");
+                if (!m.Success) { if (battery >= 0) batteries.Add(new KeyValuePair<string, int>(id, battery)); continue; }
+                string name = Text(Prop(set, ref d, KeyFriendlyName));
+                if (name.Length == 0 || PadName.IsMatch(name)) continue;
+                byte[] con = Prop(set, ref d, KeyConnected);
+                bool connected = con != null && con.Length > 0 && con[0] != 0;
+                string key = "bt-" + m.Groups[2].Value;
+                Device dv = devs.Find(delegate (Device x) { return x.Key == key; });   // a dual-mode device is in both lists
+                if (dv == null) devs.Add(dv = new Device { Key = key, Name = name, Glyph = GlyphFor(name, "bt"), Conn = "Bluetooth" });
+                dv.Connected |= connected;
+                dv.Battery = Math.Max(dv.Battery, battery);
+            }
+            SetupDiDestroyDeviceInfoList(set);
+        }
+        devs = devs.FindAll(delegate (Device x) { return x.Connected; });
+        foreach (Device dv in devs)
+        {
+            string mac = dv.Key.Substring(3);
+            foreach (KeyValuePair<string, int> b in batteries)
+                if (b.Key.Contains(mac)) dv.Battery = Math.Max(dv.Battery, b.Value);
+        }
+        return devs;
+    }
+
+    // USB devices plugged in from outside: not hubs, not what is built into the PC (webcam, card
+    // reader, Bluetooth radio), not the wheel and handbrake (they have their own banner). The name is
+    // the one the device gives itself ("SanDisk Ultra", "G435 Wireless Gaming Headset").
+    public static List<Device> Usb()
+    {
+        List<Device> o = new List<Device>();
+        Guid g = UsbDeviceInterface;
+        IntPtr set = SetupDiGetClassDevs(ref g, IntPtr.Zero, IntPtr.Zero, 0x12);   // PRESENT | DEVICEINTERFACE
+        if (set == NoSet) return o;
+        SP_DEVINFO_DATA d = new SP_DEVINFO_DATA();
+        d.cbSize = Marshal.SizeOf(d);
+        for (int i = 0; SetupDiEnumDeviceInfo(set, i, ref d); i++)
+        {
+            StringBuilder sb = new StringBuilder(512); int req;
+            if (!SetupDiGetDeviceInstanceId(set, ref d, sb, sb.Capacity, out req)) continue;
+            string id = sb.ToString().ToLowerInvariant();
+            if (id.Contains("root_hub")) continue;
+            bool wheel = false;
+            foreach (string[] w in Wired) if (id.Contains(w[0])) wheel = true;
+            if (wheel) continue;
+            byte[] inside = Prop(set, ref d, KeyInternal);
+            if (inside != null && inside.Length > 0 && inside[0] != 0) continue;
+            string name = Text(Prop(set, ref d, KeyBusName));
+            if (name.Length == 0) name = Text(Prop(set, ref d, KeyFriendlyName));
+            if (name.Length == 0) name = Text(Prop(set, ref d, KeyDesc));
+            if (name.Length == 0 || name.ToLowerInvariant().Contains("hub")) continue;
+            o.Add(new Device { Key = "usb-" + id, Name = name, Glyph = GlyphFor(name, "usb"), Conn = "USB", Connected = true });
+        }
+        SetupDiDestroyDeviceInfoList(set);
+        return o;
+    }
+
+    // The banner icon from the device's name.
+    static string GlyphFor(string name, string fallback)
+    {
+        string n = name.ToLowerInvariant();
+        if (n.Contains("controller") || n.Contains("gamepad") || n.Contains("joystick")) return "pad";
+        if (n.Contains("mouse") || n.Contains("trackball") || n.Contains("mx master") || n.Contains("mx anywhere")) return "mouse";
+        if (n.Contains("keyboard") || n.Contains("teclado") || n.Contains("mx keys")) return "keyboard";
+        if (n.Contains("airpods") || n.Contains("buds") || n.Contains("head") || n.Contains("earphone") ||
+            n.Contains("fone") || Regex.IsMatch(n, @"\b(wh|wf)-")) return "headphones";
+        if (n.Contains("speaker") || n.Contains("soundbar") || n.Contains("caixa") || n.Contains("jbl")) return "speaker";
+        if (Regex.IsMatch(n, @"\bmic\b") || n.Contains("microphone") || n.Contains("hollyland") || n.Contains("rode")) return "mic";
+        return fallback;
     }
 
     static List<string> HidPaths()
@@ -2189,7 +2307,8 @@ static class Ui
     // ------------------------------------------------------------ drawn icons
     // Solid icons drawn with paths (cut-outs are cleared to transparent), rendered at 2x,
     // then re-centred on their real ink bounds so every icon sits dead centre in its box.
-    // Kinds: pad, monitor, tv, headphones, speaker, mic, rec (OBS recording), live (OBS stream).
+    // Kinds: pad, monitor, tv, headphones, speaker, mic, rec (OBS recording), live (OBS stream),
+    // bt (Bluetooth), usb, mouse, keyboard.
     static readonly Dictionary<string, Bitmap> iconCache = new Dictionary<string, Bitmap>();
 
     public static void Icon(Graphics g, string kind, RectangleF box, Color c)
@@ -2225,6 +2344,10 @@ static class Ui
                 case "mic": DrawMic(g, c, fill, s); break;
                 case "rec": DrawRec(g, c, fill, s); break;
                 case "live": DrawLive(g, c, fill, s); break;
+                case "bt": DrawBluetooth(g, c, s); break;
+                case "usb": DrawUsb(g, fill, clear, s); break;
+                case "mouse": DrawMouse(g, fill, clear, s); break;
+                case "keyboard": DrawKeyboard(g, fill, clear, s); break;
                 default: DrawPad(g, fill, clear, s); break;
             }
         }
@@ -2362,6 +2485,54 @@ static class Ui
         }
     }
 
+    // Bluetooth: the rune.
+    static void DrawBluetooth(Graphics g, Color c, int s)
+    {
+        using (Pen pen = new Pen(c, s * 0.085f))
+        {
+            pen.StartCap = LineCap.Round;
+            pen.EndCap = LineCap.Round;
+            pen.LineJoin = LineJoin.Round;
+            g.DrawLines(pen, new PointF[] {
+                new PointF(s * 0.28f, s * 0.30f), new PointF(s * 0.70f, s * 0.68f), new PointF(s * 0.50f, s * 0.88f),
+                new PointF(s * 0.50f, s * 0.12f), new PointF(s * 0.70f, s * 0.32f), new PointF(s * 0.28f, s * 0.70f) });
+        }
+    }
+
+    // USB: a plug, head up, with its two contacts.
+    static void DrawUsb(Graphics g, Brush fill, Brush clear, int s)
+    {
+        g.FillRectangle(fill, s * 0.35f, s * 0.08f, s * 0.30f, s * 0.30f);
+        using (GraphicsPath body = Rounded(new RectangleF(s * 0.26f, s * 0.38f, s * 0.48f, s * 0.54f), s * 0.08f)) g.FillPath(fill, body);
+        g.CompositingMode = CompositingMode.SourceCopy;
+        g.FillRectangle(clear, s * 0.41f, s * 0.17f, s * 0.06f, s * 0.08f);
+        g.FillRectangle(clear, s * 0.53f, s * 0.17f, s * 0.06f, s * 0.08f);
+        g.CompositingMode = CompositingMode.SourceOver;
+    }
+
+    // Mouse: the body, split into two buttons.
+    static void DrawMouse(Graphics g, Brush fill, Brush clear, int s)
+    {
+        using (GraphicsPath body = Rounded(new RectangleF(s * 0.26f, s * 0.06f, s * 0.48f, s * 0.88f), s * 0.24f)) g.FillPath(fill, body);
+        g.CompositingMode = CompositingMode.SourceCopy;
+        g.FillRectangle(clear, s * 0.48f, s * 0.04f, s * 0.04f, s * 0.36f);
+        g.FillRectangle(clear, s * 0.24f, s * 0.38f, s * 0.52f, s * 0.04f);
+        g.CompositingMode = CompositingMode.SourceOver;
+    }
+
+    // Keyboard: two rows of keys and a space bar.
+    static void DrawKeyboard(Graphics g, Brush fill, Brush clear, int s)
+    {
+        using (GraphicsPath body = Rounded(new RectangleF(s * 0.04f, s * 0.22f, s * 0.92f, s * 0.56f), s * 0.08f)) g.FillPath(fill, body);
+        g.CompositingMode = CompositingMode.SourceCopy;
+        float k = s * 0.085f, gap = s * 0.05f, x0 = (s - (6 * k + 5 * gap)) / 2;
+        for (int row = 0; row < 2; row++)
+            for (int i = 0; i < 6; i++)
+                g.FillRectangle(clear, x0 + i * (k + gap), s * 0.31f + row * (k + gap), k, k);
+        g.FillRectangle(clear, s * 0.30f, s * 0.31f + 2 * (k + gap), s * 0.40f, k);
+        g.CompositingMode = CompositingMode.SourceOver;
+    }
+
     // Copy the drawn ink so that its bounding box is centred in the bitmap.
     static Bitmap CenterInk(Bitmap src)
     {
@@ -2444,7 +2615,7 @@ static class Ui
 
 // ---------------------------------------------------------------- banner
 // Top left of the primary screen, over everything, without taking the focus: the audio output,
-// a device or controller that connects (a controller with its battery), the controller mouse, OBS.
+// a device that connects (with its battery when it has one), the controller mouse, OBS.
 class Banner : Form
 {
     readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
@@ -2496,13 +2667,15 @@ class Banner : Form
         Open(caption, name, kind, index, count);
     }
 
-    // A controller: its name and, under it, its battery (pills, percent, charging) or USB.
-    public void ShowPad(string caption, Pad p)
+    // A device that connected (or runs low): its name and, under it, its battery (pills, percent,
+    // charging). A controller always has the line (USB, or battery unknown); another device only
+    // when it reports a battery.
+    public void ShowWithBattery(string caption, Device d)
     {
-        battery = p.Conn == "USB" ? Wired : p.Battery;
-        charging = p.Charging;
+        battery = d.Pad ? (d.Conn == "USB" ? Wired : d.Battery) : (d.Battery >= 0 ? d.Battery : NoBattery);
+        charging = d.Charging;
         holdMs = 3500;
-        Open(caption, p.Name, "pad", 0, 0);
+        Open(caption, d.Name, d.Glyph, 0, 0);
     }
 
     // Shows it now, or once the banner on screen is gone (several controllers connected together).
@@ -3018,11 +3191,12 @@ class XdeckApp : Form
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { banner.Show(caption, text, icon, index, count); });
         };
         XInputPoller.Start();
-        // Controllers: battery in the tray tooltip, a banner when one connects or runs low.
+        // Devices: controller battery in the tray tooltip, a banner when a device connects or runs low.
         // The first scan (soon after start) only learns which are there already.
         scan = new System.Windows.Forms.Timer();
         scan.Interval = 1500;
-        scan.Tick += delegate { WatchPads(); };
+        scan.Tick += delegate { WatchDevices(); };
+        SystemEvents.PowerModeChanged += PowerChanged;
         scan.Start();
         try { Pads.RefreshReaders(); } catch { }
 
@@ -3249,6 +3423,7 @@ class XdeckApp : Form
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        SystemEvents.PowerModeChanged -= PowerChanged;
         UnregisterHotKey(Handle, 1);
         UnregisterHotKey(Handle, 2);
         tray.Visible = false;
@@ -3265,55 +3440,82 @@ class XdeckApp : Form
         base.WndProc(ref m);
     }
 
-    // ------------------------------------------------ controllers
-    // A banner for each controller that connects, with its name and battery, and one when a
-    // wireless controller's battery gets low (again only after it charged or came back up).
-    const int LowBattery = 15, BatteryWaitMs = 5000;
+    // ------------------------------------------------ devices
+    // A banner for each device that connects: a controller, a Bluetooth device (headphones, mouse,
+    // keyboard, phone) or a USB device, with its battery when it reports one; and one when a
+    // wireless device's battery gets low (again only after it charged or came back up).
+    const int LowBattery = 15, PadBatteryWaitMs = 5000, BatteryWaitMs = 3000, QuietReconnectS = 60, AfterWakeS = 30;
     System.Windows.Forms.Timer scan;
-    HashSet<string> knownPads;                                     // null until the first scan
-    readonly Dictionary<string, DateTime> padsNew = new Dictionary<string, DateTime>();
+    HashSet<string> known;                                          // null until the first scan
+    readonly Dictionary<string, DateTime> arrived = new Dictionary<string, DateTime>();   // connected, banner not shown yet
+    readonly Dictionary<string, DateTime> goneAt = new Dictionary<string, DateTime>();
     readonly HashSet<string> lowWarned = new HashSet<string>();
+    DateTime quietUntil = DateTime.MinValue;   // asleep, and a moment after waking: devices come back, that is no news
+    DateTime deviceArrived = DateTime.MinValue;   // the last USB / Bluetooth device that connected
 
-    void WatchPads()
+    void WatchDevices()
     {
+        List<Device> all = new List<Device>();
         List<Pad> pads;
-        try { Pads.RefreshReaders(); pads = Pads.List(); } catch { return; }
+        try
+        {
+            Pads.RefreshReaders();
+            pads = Pads.List();
+            foreach (Pad p in pads) all.Add(Device.Of(p));
+            all.AddRange(Pads.Bluetooth());
+            all.AddRange(Pads.Usb());
+        }
+        catch { return; }
         UpdateTrayText(pads);
         DateTime now = DateTime.Now;
+        bool quiet = now < quietUntil;
         HashSet<string> keys = new HashSet<string>();
-        foreach (Pad p in pads)
+        foreach (Device d in all)
         {
-            keys.Add(p.Mac);
-            if (knownPads != null && !knownPads.Contains(p.Mac)) padsNew[p.Mac] = now;
+            if (!keys.Add(d.Key) || known == null || known.Contains(d.Key) || quiet) continue;
+            // Back after a moment is no news: Bluetooth mice and keyboards drop out while they sleep,
+            // USB devices start over. A controller turned off and on again is still announced.
+            DateTime gone;
+            if (!d.Pad && goneAt.TryGetValue(d.Key, out gone) && (now - gone).TotalSeconds < QuietReconnectS) continue;
+            arrived[d.Key] = now;
+            if (!d.Pad) deviceArrived = now;
         }
-        // Controllers already there when Xdeck starts get no banner.
-        knownPads = keys;
+        if (known != null) foreach (string k in known) if (!keys.Contains(k)) goneAt[k] = now;
+        known = keys;   // devices already there when Xdeck starts get no banner
 
-        foreach (string key in new List<string>(padsNew.Keys))
+        foreach (string key in new List<string>(arrived.Keys))
         {
-            Pad p = pads.Find(delegate (Pad x) { return x.Mac == key; });
-            if (p == null) { padsNew.Remove(key); continue; }   // gone again before its banner
-            // A DualSense or Pro Controller reports its battery in its first input reports: wait a moment for it.
-            if (p.Conn != "USB" && p.Battery < 0 && (now - padsNew[key]).TotalMilliseconds < BatteryWaitMs) continue;
-            padsNew.Remove(key);
-            if (p.Battery >= 0 && p.Battery <= LowBattery && !p.Charging) lowWarned.Add(key);   // the banner shows it already
-            banner.ShowAfter(delegate { banner.ShowPad("Controller connected", p); });
+            Device d = all.Find(delegate (Device x) { return x.Key == key; });
+            if (d == null) { arrived.Remove(key); continue; }   // gone again before its banner
+            // The battery can take a moment to come in (a DualSense or Pro Controller reports it in its
+            // first input reports, a headset once its hands-free profile connects): wait a little for it.
+            if (d.Conn != "USB" && d.Battery < 0 && (now - arrived[key]).TotalMilliseconds < (d.Pad ? PadBatteryWaitMs : BatteryWaitMs)) continue;
+            arrived.Remove(key);
+            if (d.Battery >= 0 && d.Battery <= LowBattery && !d.Charging) lowWarned.Add(key);   // the banner shows it already
+            string caption = d.Pad ? "Controller connected" : d.Conn == "USB" ? "USB device connected" : "Bluetooth device connected";
+            banner.ShowAfter(delegate { banner.ShowWithBattery(caption, d); });
         }
 
-        foreach (Pad p in pads)
+        foreach (Device d in all)
         {
-            if (p.Conn == "USB" || p.Battery < 0 || padsNew.ContainsKey(p.Mac)) continue;
-            if (p.Charging || p.Battery > LowBattery + 5) { lowWarned.Remove(p.Mac); continue; }
-            if (p.Battery <= LowBattery && lowWarned.Add(p.Mac))
+            if (d.Conn == "USB" || d.Battery < 0 || arrived.ContainsKey(d.Key)) continue;
+            if (d.Charging || d.Battery > LowBattery + 5) { lowWarned.Remove(d.Key); continue; }
+            if (d.Battery <= LowBattery && lowWarned.Add(d.Key))
             {
-                Pad low = p;
-                banner.ShowAfter(delegate { banner.ShowPad("Controller battery low", low); });
+                Device low = d;
+                banner.ShowAfter(delegate { banner.ShowWithBattery(low.Pad ? "Controller battery low" : "Battery low", low); });
             }
         }
         lowWarned.RemoveWhere(delegate (string k) { return !keys.Contains(k); });
 
-        // while a new controller's battery is on its way, look again sooner
-        scan.Interval = padsNew.Count > 0 ? 1000 : 3000;
+        // while a new device's battery is on its way, look again sooner
+        scan.Interval = arrived.Count > 0 ? 1000 : 3000;
+    }
+
+    void PowerChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Suspend) quietUntil = DateTime.MaxValue;
+        else if (e.Mode == PowerModes.Resume) quietUntil = DateTime.Now.AddSeconds(AfterWakeS);
     }
 
     // Tray tooltip: battery of each wireless controller, with a bolt while charging (max 63 chars).
@@ -3340,10 +3542,14 @@ class XdeckApp : Form
     {
         HashSet<string> outs = Ids(false), mics = Ids(true);
         bool changed = !outs.SetEquals(knownOut) || !mics.SetEquals(knownMic);
+        // A headset or speaker that connects over USB or Bluetooth already has its own banner (with
+        // its battery): look for it now, and say nothing more about its audio.
+        if (!outs.IsSubsetOf(knownOut) || !mics.IsSubsetOf(knownMic)) WatchDevices();
+        bool said = (DateTime.Now - deviceArrived).TotalSeconds < 15 || DateTime.Now < quietUntil;
         foreach (string id in mics)
-            if (!knownMic.Contains(id)) { banner.Show("Microphone connected", Audio.Name(id), "mic", 0, 0); break; }
+            if (!said && !knownMic.Contains(id)) { banner.Show("Microphone connected", Audio.Name(id), "mic", 0, 0); break; }
         foreach (string id in outs)
-            if (!knownOut.Contains(id)) { string n = Audio.Name(id); banner.Show("Audio output connected", n, Audio.Glyph(n), 0, 0); break; }
+            if (!said && !knownOut.Contains(id)) { string n = Audio.Name(id); banner.Show("Audio output connected", n, Audio.Glyph(n), 0, 0); break; }
         knownOut = outs;
         knownMic = mics;
         if (changed && panel.Visible) panel.Reload();
@@ -3408,7 +3614,7 @@ static class Program
     // "Xdeck.exe --icons <file.png>" renders every icon (banner size and 4x) for a visual check.
     static void IconSheet(string file)
     {
-        string[] kinds = { "pad", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live" };
+        string[] kinds = { "pad", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard" };
         Color accent = Ui.Accent;
         Color ink = accent.GetBrightness() < 0.35f ? Color.White : accent;
         using (Bitmap bmp = new Bitmap(kinds.Length * 120 + 20, 220))

@@ -2,9 +2,14 @@
 
 ## 0.4.0 — 2026-11-11
 
-- **A controller that connects shows up on screen**: a banner names it with its battery (pills and
-  percent, *charging*, or `USB`). Several at once come one after another. When a wireless
-  controller's battery drops to 15%, a banner warns once (again only after it has charged).
+- **Every device that connects shows up on screen**: a controller, a Bluetooth device (headphones,
+  mouse, keyboard, phone) or a USB device (pen drive, headset, keyboard, phone) gets a banner with its
+  name, an icon for its kind and its battery when it reports one (pills and percent, *charging*;
+  `USB` for a controller on a cable). Several at once come one after another. When a wireless
+  device's battery drops to 15%, a banner warns once (again only after it has charged).
+- A USB or Bluetooth headset gets that one banner instead of one for its audio output and one for
+  its microphone. No banner for devices built into the PC, for devices back within a minute
+  (Bluetooth mice and keyboards waking up), or for what reconnects when the PC wakes from sleep.
 - **OBS Studio from the controller**, over OBS's own WebSocket server (OBS 28+, Tools › WebSocket
   Server Settings): R1 + D-pad right + Cross / Square / Triangle / Circle start or stop recording,
   pause it, start or stop streaming and save the replay buffer; R1 + R3 / R1 + L3 switch to the next
