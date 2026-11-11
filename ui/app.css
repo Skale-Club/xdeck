@@ -71,7 +71,6 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .row.item .ico svg { width: 17px; height: 17px; }
 .row.item .name { color: #d7d7dc; font-size: 13.5px; }
 .row.item:hover { background: var(--card-hot); }
-.row.empty { height: 46px; padding: 0 14px; background: var(--card); color: var(--faint); cursor: default; font-size: 13px; }
 .chev { width: 24px; height: 24px; display: grid; place-items: center; color: var(--dim); transition: transform .15s; }
 .chev svg { width: 11px; height: 11px; }
 
@@ -109,7 +108,8 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .switch.on { background: var(--accent); }
 .switch.on b { left: 19px; background: #fff; }
 .ring-row { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 6px 10px; }
-.ring-dev { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 44px; }
+.ring-dev { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; }
+.ring-name { width: 100%; text-align: center; font-size: 11px; overflow-wrap: anywhere; }
 .ring { position: relative; width: 44px; height: 44px; display: block; }
 .ring > svg { position: absolute; inset: 0; width: 44px; height: 44px; transform: rotate(-90deg); }
 .ring-track { fill: none; stroke: var(--off); stroke-width: 3; }
@@ -158,7 +158,6 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 @keyframes charge { 0%, 100% { background: var(--off); } 50% { background: var(--bat); } }
 .tester .battery { margin-right: 6px; }
 .wired { color: var(--dim); font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; background: var(--sub); }
-.none { color: var(--faint); padding: 8px 6px 12px; font-size: 13px; }
 
 /* controller navigation: the focused item, and the button help under the panel */
 .pad-mode .nav-focus { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }

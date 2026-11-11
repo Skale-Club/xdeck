@@ -51,8 +51,12 @@ Xdeck lives in the system tray as a gear:
 |---|---|
 | **Audio output** | See the active output and its live level. Click it to list the others and pick one. Volume slider (drag or scroll), mute. |
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
-| **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. Below them, a circle per mouse, keyboard or other wireless device: its icon, with a ring that fills with the battery. |
+| **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. |
+| **Devices** | Named mice, keyboards and other wireless peripherals, with their battery when reported. Surface Type Cover is identified as a keyboard. Unidentified USB entries are omitted. |
 | **Updates** | Only while an update is on its way: a progress bar while it downloads, then **Restart to update**. Otherwise just the version. |
+
+Device sections appear only while they contain connected devices and disappear when the last one
+disconnects. Built-in audio devices remain available while Windows reports them as active.
 
 ## Devices that connect
 

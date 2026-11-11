@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.5 — 2026-11-11
+
+- Hide audio output, microphone and controller sections when no devices are connected.
+- Give connected peripherals their own Devices section, display their names, and omit unidentified
+  USB entries. Surface Type Cover uses a keyboard icon instead of its touchpad's mouse icon.
+
 ## 0.7.4 — 2026-11-11
 
 - **Mice and keyboards on a Logitech receiver** (Unifying, Bolt, Lightspeed) show up by name with

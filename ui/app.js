@@ -150,8 +150,8 @@ $app.addEventListener("wheel", (e) => {
 
 // ------------------------------------------------------------ panel
 function sectionHtml(sec, title, list, def) {
+  if (!list.length) return "";
   let h = `<h2>${title}</h2>`;
-  if (!list.length) return h + `<div class="row empty">${sec === 1 ? "No outputs connected" : "No microphones connected"}</div>`;
   const active = list.find((e) => e.id === def) || list[0];
   // Brand logo in the icon column when the brand is known, otherwise the device-type icon.
   const icon = (e) => logo(audioBrand(e.name)) || (sec === 2 ? I.mic : I[audioKind(e.name)]);
@@ -180,20 +180,23 @@ function batteryHtml(p) {
 }
 
 // A device as a circle: its icon, and a ring that fills with the battery (red when low). No
-// battery known: a faint ring; a USB receiver: a dashed one. The name shows on hover.
+// battery known: a faint ring; a USB connection: a dashed one. Always show the device's name.
 function ringHtml(d) {
   const r = 19, c = 2 * Math.PI * r;
   const has = d.conn !== "USB" && d.battery >= 0;
   const color = !has ? "var(--dim)" : d.battery <= 20 ? "var(--red)" : d.battery <= 45 ? "var(--amber)" : "var(--green)";
   const arc = has ? `<circle class="ring-fill" cx="22" cy="22" r="${r}" stroke="${color}" stroke-dasharray="${(c * d.battery / 100).toFixed(1)} ${c.toFixed(1)}"/>` : "";
-  const label = d.conn === "USB" ? "USB" : has ? `${d.battery}%` : "";
+  const label = has ? `${d.battery}%` : "";
+  // Windows exposes the Type Cover's touchpad as a mouse on the same USB device as its keyboard.
+  const glyph = /surface.*type\s*cover/i.test(d.name) ? "keyboard" : d.glyph;
   const tip = `${d.name}${has ? " · " + d.battery + "%" : d.conn === "USB" ? " · USB" : ""}${d.charging ? " · charging" : ""}`;
   return `<div class="ring-dev" title="${esc(tip)}">
       <span class="ring">
         <svg viewBox="0 0 44 44"><circle class="ring-track${d.conn === "USB" ? " usb" : ""}" cx="22" cy="22" r="${r}"/>${arc}</svg>
-        <span class="ring-ico">${I[d.glyph] || (d.conn === "USB" ? I.usb : I.bt)}</span>
+        <span class="ring-ico">${I[glyph] || (d.conn === "USB" ? I.usb : I.bt)}</span>
       </span>
-      <span class="ring-lbl" style="color:${has ? color : "var(--dim)"}">${d.charging ? BOLT : ""}${label}</span>
+      <span class="ring-name">${esc(d.name)}</span>
+      ${label || d.charging ? `<span class="ring-lbl" style="color:${has ? color : "var(--dim)"}">${d.charging ? BOLT : ""}${label}</span>` : ""}
     </div>`;
 }
 
@@ -201,8 +204,7 @@ function panelHtml() {
   let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
-  h += `<h2>Controllers</h2>`;
-  if (!state.pads.length) h += `<div class="none">No controllers connected</div>`;
+  if (state.pads.length) h += `<h2>Controllers</h2>`;
   for (const p of state.pads)
     h += `<div class="card" data-act="test" data-key="${esc(p.key)}" data-nav="card-${esc(p.key)}">
             <span class="disc">${padModel(p.kind)}</span>
@@ -210,9 +212,10 @@ function panelHtml() {
             ${p.mouse ? `<span class="wired mouse-chip">Mouse</span>` : ""}${batteryHtml(p)}</div>`;
   // mice, keyboards and other wireless devices: a circle each under the controllers, the icon
   // inside and a ring around it that fills with the battery
-  const devs = state.devices || [];
+  const devs = (state.devices || []).filter((d) => d.connected !== false && d.name &&
+    (d.conn !== "USB" || (d.glyph !== "usb" && !/^usb(?: (?:input|composite))?(?: device)?$/i.test(d.name.trim()))));
   if (devs.length) {
-    h += `<div class="ring-row">`;
+    h += `<h2>Devices</h2><div class="ring-row">`;
     for (const d of devs) h += ringHtml(d);
     h += `</div>`;
   }
