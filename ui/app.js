@@ -258,6 +258,9 @@ function ago(ms) {
 function updatesHtml() {
   const u = state.upd;
   if (!u) return "";
+  // nothing to do (no update, a background check, or one that failed): just the version, quietly
+  if (!["downloading", "ready", "installing"].includes(u.state))
+    return `<div class="version-line">Xdeck ${esc(u.current)}</div>`;
   let status, button = "", bar = "";
   const v = esc(u.version || "");
   switch (u.state) {

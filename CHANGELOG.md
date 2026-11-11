@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-11-11
+
+- The Updates area shows up only when there is something to do (downloading, ready, installing);
+  otherwise the bottom of the panel just shows the version. Tray menu › **Check for updates**
+  still checks on demand.
+
 ## 0.5.0 — 2026-11-11
 
 - **Phone remote**, like Unified Remote: turn on **Phone remote** in the panel and scan its QR code

@@ -30,9 +30,9 @@ copy (run `Xdeck.exe` from the unzipped folder; settings stay in `Data\` beside 
 hours, downloads it in the background and checks its signature. Then a notification, the tray menu
 and the panel offer **Restart to update**; quitting Xdeck installs it too. Settings are kept.
 Installed for every user (in `C:\Program Files`), Windows asks for administrator approval once per
-update. The **Updates** area at the bottom of the panel shows the version and how it goes (a
-progress bar while it downloads), with **Check now** or **Restart to update**; the tray menu has
-**Check for updates** too.
+update. When one is on its way, an **Updates** area at the bottom of the panel shows how it goes (a
+progress bar while it downloads) and **Restart to update**; otherwise the panel just shows the
+version there. Tray menu › **Check for updates** checks right away.
 
 Uninstall from Settings › Apps (or `"Uninstall Xdeck.exe" /uninstall` in its folder). An installed
 Xdeck keeps each user's settings in `%LOCALAPPDATA%\Xdeck`, also after uninstalling. On first run the gear is pinned to the taskbar
@@ -52,7 +52,7 @@ Xdeck lives in the system tray as a gear:
 | **Audio output** | See the active output and its live level. Click it to list the others and pick one. Volume slider (drag or scroll), mute. |
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
 | **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. Below them, a circle per mouse, keyboard or other wireless device: its icon, with a ring that fills with the battery. |
-| **Updates** | The version, what the updater is doing (a progress bar while it downloads), and **Check now** / **Restart to update**. |
+| **Updates** | Only while an update is on its way: a progress bar while it downloads, then **Restart to update**. Otherwise just the version. |
 
 ## Devices that connect
 
@@ -232,8 +232,8 @@ pelo próprio controle.
 - **Atualizações:** automáticas. O Xdeck procura versão nova ao abrir e a cada 6 horas, baixa
   sozinho e avisa **Restart to update** (notificação, menu do tray e painel); fechar o Xdeck também
   instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por
-  atualização. As configurações ficam. No rodapé do painel, **Updates** mostra a versão, a barra de
-  progresso do download e os botões **Check now** / **Restart to update**.
+  atualização. As configurações ficam. Quando chega uma versão nova, o rodapé do painel mostra
+  **Updates** com a barra de progresso e **Restart to update**; fora isso, só a versão.
 - **Controle pelo celular (tipo Unified Remote):** ligue **Phone remote** no painel e aponte a câmera
   do celular para o QR code (mesmo Wi-Fi). O celular vira touchpad (toque = clique, dois dedos =
   rolar, segurar = arrastar), teclado (o que você digita vai para o PC), teclas de mídia, troca de
