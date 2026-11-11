@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-11-10
+
+- Xdeck updates itself, like the other Skale apps: a minute after start and every six hours it
+  checks the latest GitHub release, downloads it in the background, keeps it only if it matches its
+  signature, and offers **Restart to update** in a notification, the tray menu and the panel.
+  Quitting Xdeck installs it too. Settings stay. In `C:\Program Files` Windows asks for
+  administrator approval once per update. Tray menu › **Check for updates** checks right away.
+- The panel shows the version at the bottom; `Xdeck.exe` carries it too (Explorer › Properties).
+- `build.ps1 -Release` signs the zip, writes `latest.json` and publishes the GitHub release.
+
 ## 0.2.0 — 2026-11-10
 
 - Open and hide the panel from any controller: hold L1 + D-pad right and press Triangle (LB + right

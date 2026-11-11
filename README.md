@@ -19,6 +19,14 @@ It needs Windows 10/11 64-bit with the Microsoft Edge WebView2 Runtime (built in
 | **Only for you** — `install.ps1 -CurrentUser` | Installs to `%LOCALAPPDATA%\Programs\Xdeck`, your Start menu and your startup. No admin. |
 | **Portable** — double-click `Xdeck.exe` in the unzipped folder | Runs from there; its settings stay in the `Data\` folder beside it. |
 
+The latest zip is on the [releases page](https://github.com/Skale-Club/xdeck/releases/latest).
+
+**Updates are automatic.** Xdeck checks for a new release a minute after it starts and every six
+hours, downloads it in the background and checks its signature. Then a notification, the tray menu
+and the panel offer **Restart to update**; quitting Xdeck installs it too. Settings are kept.
+Installed for every user (in `C:\Program Files`), Windows asks for administrator approval once per
+update. Tray menu › **Check for updates** checks right away.
+
 `install.ps1 -Uninstall` (add `-CurrentUser` for a per-user install) removes it. An installed Xdeck
 keeps each user's settings in `%LOCALAPPDATA%\Xdeck`. On first run the gear is pinned to the taskbar
 instead of hiding under the ^ arrow. Opening Xdeck a second time does nothing; the first copy keeps
@@ -28,7 +36,7 @@ Xdeck lives in the system tray as a gear:
 
 - **Left click**: open or close the panel. A click anywhere outside it, ×, or Esc closes it too.
 - **Right click**: open the panel, next / previous audio output, **Start with Windows**,
-  **Edit shortcuts…**, quit.
+  **Edit shortcuts…**, **Check for updates** (or **Restart to update** when one is ready), quit.
 
 ## The panel
 
@@ -121,6 +129,7 @@ mouse.speed = 1400                 # pointer pixels per second at full tilt (200
 ## Build
 
 ```powershell
+.\build.ps1 -Release            # zip + sign + latest.json + GitHub release v<VERSION> (from a clean main)
 .\build.ps1                     # build\Xdeck
 .\build.ps1 -Zip                # + dist\Xdeck-<version>.zip (portable, with install.ps1)
 .\build.ps1 -Install            # + install for the current user
@@ -144,6 +153,10 @@ pelo próprio controle.
   PowerShell* e aprove o pedido de administrador. Vai para `C:\Program Files\Xdeck`, entra no Menu
   Iniciar e abre com o Windows para todo mundo. Só para você: `install.ps1 -CurrentUser`.
   Portátil: dois cliques em `Xdeck.exe` na pasta descompactada.
+- **Atualizações:** automáticas. O Xdeck procura versão nova ao abrir e a cada 6 horas, baixa
+  sozinho e avisa **Restart to update** (notificação, menu do tray e painel); fechar o Xdeck também
+  instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por
+  atualização. As configurações ficam.
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).

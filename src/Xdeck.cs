@@ -9,11 +9,17 @@
 // Build with ..\build.ps1 (C# 5 / .NET Framework 4.8: no string interpolation, no ?. operator).
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.IO;
+using System.IO.Compression;
+using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -146,6 +152,300 @@ mouse.speed = 1400
         }
         Shortcuts.SetPad(panel, panelText, audio, mouse, mouseText, mouseSpeed);
         return errors;
+    }
+}
+
+// ---------------------------------------------------------------- self-update
+// Like the other Skale apps, Xdeck updates itself from its GitHub releases. A minute after start and
+// every six hours it reads latest.json from the latest release; when that version is newer, it
+// downloads the release zip in the background and keeps it only if it matches its signature
+// (RSA SHA-256, made by build.ps1 -Release with the Xdeck update key; the public half is below).
+// When it is ready, the tray and the panel offer a restart, and quitting Xdeck installs it too
+// when its folder is writable.
+// Installing: the zip is checked again and unpacked to %TEMP%, and the new Xdeck.exe runs from
+// there with --apply-update: it waits for this copy to exit, copies the new files over this
+// folder (never Data\, so settings stay) and starts Xdeck again through Explorer, as the user.
+// In Program Files only an administrator can write, so that helper asks for approval once.
+static class Updater
+{
+    public const string DefaultFeed = "https://github.com/Skale-Club/xdeck/releases/latest/download/latest.json";
+    const string PublicKey = "<RSAKeyValue><Modulus>sY6SX0bMNUynsEozcmBJZ66U4HPwcbeSo7RN0yapJ6bk83bceczM7x4L1e5fRP2cDajE9JLs0DmRBWpwVLcgQS6MgwLfk4X0/0fIvxrANcUlVJWQ3IGSRAbB/D1kaD53U6OKfdi7Fjw7KPop6k/DOUAZRSmGQNN62RTzZ3tI3NHedinea8VnudV2HATU9v4XDENhbSNlCrjSC9ed8Geeas2HxfVVUYskCqDNYUjDsNxIcgMetbr0ZE0YYNW2xqwjQB2Y4veNkuru5/SLl5TBJKTaKR6Yo3N0yVps10yYe3W/L279CnIiFNy0WGlxl1VwqN3cb13pdn00qEKphLKA59pL1JEqogX7icd4CMfNU1rjjE68A7qn0VnEb3N0q9c1704wVnVSPRxO5fLAsZlxbbxmCh2ozlGtvSeonFS470Jvacl5ckc4sAjSrzUg9zD24zun7F0PA9NrzlkJDyvEXrRRW/GB0SgaIeZjL02lJ74ygPn0zYnnbDz1PHppwykN</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>";
+    const long MaxDownload = 100L * 1024 * 1024;
+    const string Agent = "skale-x-updater";
+    static readonly TimeSpan Every = TimeSpan.FromHours(6);
+
+    public enum State { Idle, Checking, UpToDate, Downloading, Ready, Failed }
+    public static volatile State Now = State.Idle;
+    public static volatile string Version;  // the newer release being downloaded or ready
+    public static volatile string Error;    // why the last check failed
+    public static Action Changed;           // set by the app; called from the updater thread
+    static int busy;
+
+    // This build, from the assembly version build.ps1 stamps from VERSION.
+    public static string Current
+    {
+        get { System.Version v = Assembly.GetExecutingAssembly().GetName().Version; return v.Major + "." + v.Minor + "." + v.Build; }
+    }
+
+    // XDECK_UPDATE_FEED points a test copy at another feed (plain http only on this PC).
+    static string Feed
+    {
+        get
+        {
+            string f = Environment.GetEnvironmentVariable("XDECK_UPDATE_FEED");
+            return string.IsNullOrEmpty(f) ? DefaultFeed : f;
+        }
+    }
+
+    static string Root { get { return Path.Combine(AppPaths.Data, "update"); } }
+    static string ReadyFile { get { return Path.Combine(Root, "ready.json"); } }
+    static string ZipOf(string version) { return Path.Combine(Root, "Xdeck-" + version + ".zip"); }
+
+    public static void Start()
+    {
+        Cleanup();
+        Dictionary<string, object> ready = ReadReady();
+        if (ready != null) { Version = (string)ready["version"]; Now = State.Ready; }
+        Thread t = new Thread(delegate ()
+        {
+            Thread.Sleep(Environment.GetEnvironmentVariable("XDECK_UPDATE_FEED") != null ? 2000 : 60000);
+            while (true) { Check(); Thread.Sleep(Every); }
+        });
+        t.IsBackground = true;
+        t.Start();
+    }
+
+    public static void CheckNow()
+    {
+        Thread t = new Thread(Check);
+        t.IsBackground = true;
+        t.Start();
+    }
+
+    static void Set(State s) { Now = s; Action c = Changed; if (c != null) c(); }
+
+    static void Check()
+    {
+        if (Interlocked.Exchange(ref busy, 1) == 1) return;
+        try
+        {
+            bool wasReady = Now == State.Ready;
+            if (!wasReady) Set(State.Checking);
+            try
+            {
+                Dictionary<string, object> m = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                    Encoding.UTF8.GetString(Get(Feed, 1024 * 1024)));
+                string version = ((string)m["version"]).TrimStart('v');
+                string url = (string)m["url"], signature = (string)m["signature"];
+                if (Parse(version) == null) throw new Exception("the update feed has no valid version");
+                if (Newer(version, Current) <= 0) { Error = null; if (!wasReady) Set(State.UpToDate); return; }
+                if (wasReady && version == Version) { Error = null; Set(State.Ready); return; }
+                Version = version;
+                Set(State.Downloading);
+                byte[] zip = Get(url, MaxDownload);
+                if (!Verify(zip, signature)) throw new Exception("the download does not match its signature");
+                Directory.CreateDirectory(Root);
+                foreach (string old in Directory.GetFiles(Root, "Xdeck-*.zip")) TryDelete(old);
+                File.WriteAllBytes(ZipOf(version) + ".download", zip);
+                File.Move(ZipOf(version) + ".download", ZipOf(version));
+                string notes = m.ContainsKey("notes") ? (string)m["notes"] : "";
+                File.WriteAllText(ReadyFile, new JavaScriptSerializer().Serialize(new Dictionary<string, object> {
+                    { "version", version }, { "signature", signature }, { "notes", notes } }));
+                Error = null;
+                Set(State.Ready);
+            }
+            catch (Exception ex)
+            {
+                Error = ex is WebException && ((WebException)ex).Response is HttpWebResponse &&
+                        ((HttpWebResponse)((WebException)ex).Response).StatusCode == HttpStatusCode.NotFound
+                        ? "no update feed yet" : ex.Message;
+                Dictionary<string, object> ready = ReadReady();   // a download made earlier is still good
+                if (ready != null) { Version = (string)ready["version"]; Set(State.Ready); }
+                else Set(State.Failed);
+            }
+        }
+        finally { Interlocked.Exchange(ref busy, 0); }
+    }
+
+    static byte[] Get(string url, long max)
+    {
+        Uri u = new Uri(url);
+        // a test feed (XDECK_UPDATE_FEED) may also be a file or a server on this PC
+        bool local = (u.IsFile || u.IsLoopback) && Environment.GetEnvironmentVariable("XDECK_UPDATE_FEED") != null;
+        if (u.Scheme != Uri.UriSchemeHttps && !local) throw new Exception("updates come only over HTTPS");
+        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12 | (SecurityProtocolType)12288;   // + TLS 1.3
+        WebRequest r = WebRequest.Create(u);
+        r.Timeout = 20000;
+        HttpWebRequest h = r as HttpWebRequest;
+        if (h != null) { h.UserAgent = Agent; h.ReadWriteTimeout = 120000; }
+        using (WebResponse resp = r.GetResponse())
+        using (Stream s = resp.GetResponseStream())
+        using (MemoryStream m = new MemoryStream())
+        {
+            byte[] buf = new byte[81920];
+            int n;
+            while ((n = s.Read(buf, 0, buf.Length)) > 0)
+            {
+                m.Write(buf, 0, n);
+                if (m.Length > max) throw new Exception("the download is too large");
+            }
+            return m.ToArray();
+        }
+    }
+
+    public static bool Verify(byte[] data, string signature)
+    {
+        try
+        {
+            using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider())
+            {
+                rsa.PersistKeyInCsp = false;
+                rsa.FromXmlString(PublicKey);
+                return rsa.VerifyData(data, "SHA256", Convert.FromBase64String(signature));
+            }
+        }
+        catch { return false; }
+    }
+
+    // "v1.2.3" / "1.2.3" -> {1, 2, 3}; null for anything else (no pre-releases).
+    public static int[] Parse(string v)
+    {
+        string[] p = (v ?? "").Trim().TrimStart('v').Split('.');
+        if (p.Length != 3) return null;
+        int[] n = new int[3];
+        for (int i = 0; i < 3; i++) if (p[i].Length == 0 || !int.TryParse(p[i], out n[i]) || n[i] < 0 || p[i].TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9').Length > 0) return null;
+        return n;
+    }
+
+    // > 0 when a is newer than b
+    public static int Newer(string a, string b)
+    {
+        int[] x = Parse(a), y = Parse(b);
+        if (x == null || y == null) return 0;
+        for (int i = 0; i < 3; i++) if (x[i] != y[i]) return x[i].CompareTo(y[i]);
+        return 0;
+    }
+
+    // The update waiting to be installed, checked again against its signature; null if none.
+    static Dictionary<string, object> ReadReady()
+    {
+        try
+        {
+            Dictionary<string, object> r = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(ReadyFile));
+            string v = (string)r["version"];
+            if (Newer(v, Current) <= 0 || !File.Exists(ZipOf(v))) return null;
+            if (new FileInfo(ZipOf(v)).Length > MaxDownload || !Verify(File.ReadAllBytes(ZipOf(v)), (string)r["signature"])) return null;
+            return r;
+        }
+        catch { return null; }
+    }
+
+    // After an update: the downloads and the files an update moved aside are no longer needed.
+    static void Cleanup()
+    {
+        try { if (ReadReady() == null && Directory.Exists(Root)) Directory.Delete(Root, true); } catch { }
+        try { foreach (string f in Directory.GetFiles(AppPaths.Exe, "*.old-xdeck", SearchOption.AllDirectories)) TryDelete(f); } catch { }
+        try
+        {
+            foreach (string d in Directory.GetDirectories(Path.GetTempPath(), "xdeck-update-*"))
+                if (Directory.GetCreationTime(d) < DateTime.Now.AddMinutes(-10)) Directory.Delete(d, true);
+        }
+        catch { }
+    }
+
+    static void TryDelete(string f) { try { File.Delete(f); } catch { } }
+
+    public static bool FolderWritable(string dir)
+    {
+        try
+        {
+            string probe = Path.Combine(dir, ".xdeck-write-test-" + Process.GetCurrentProcess().Id);
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    // Starts installing the ready update; the caller must exit right after a true. False with an
+    // error when there is none, or the administrator prompt was turned down.
+    public static bool Install(bool relaunch, out string error)
+    {
+        error = null;
+        try
+        {
+            Dictionary<string, object> ready = ReadReady();
+            if (ready == null) { error = "no update is ready"; return false; }
+            string version = (string)ready["version"];
+            string tmp = Path.Combine(Path.GetTempPath(), "xdeck-update-" + version + "-" + DateTime.Now.Ticks);
+            using (ZipArchive zip = ZipFile.OpenRead(ZipOf(version)))
+                foreach (ZipArchiveEntry e in zip.Entries)
+                {
+                    // the zip holds Xdeck\...; skip its portable Data folder and folder entries
+                    string name = e.FullName.Replace('/', '\\');
+                    int cut = name.IndexOf('\\');
+                    if (cut < 0 || e.Name.Length == 0) continue;
+                    name = name.Substring(cut + 1);
+                    if (name.StartsWith("Data\\", StringComparison.OrdinalIgnoreCase) || name.Contains("..")) continue;
+                    string dest = Path.Combine(tmp, name);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                    e.ExtractToFile(dest, true);
+                }
+            string helper = Path.Combine(tmp, "Xdeck.exe");
+            if (!File.Exists(helper)) { error = "the update has no Xdeck.exe"; return false; }
+            ProcessStartInfo psi = new ProcessStartInfo(helper,
+                "--apply-update \"" + AppPaths.Exe + "\" " + Process.GetCurrentProcess().Id + (relaunch ? " --relaunch" : ""));
+            psi.UseShellExecute = true;
+            psi.WorkingDirectory = tmp;
+            if (!FolderWritable(AppPaths.Exe)) psi.Verb = "runas";   // Program Files: one administrator prompt
+            Process.Start(psi);
+            return true;
+        }
+        catch (Win32Exception) { error = "the administrator prompt was turned down"; return false; }
+        catch (Exception ex) { error = ex.Message; return false; }
+    }
+
+    // --apply-update <target> <pid> [--relaunch], run from the unpacked update: wait for the old copy
+    // to exit, copy this folder over the target (Xdeck.exe last), then start it again as the user.
+    public static int ApplyFromHere(string target, int pid, bool relaunch)
+    {
+        string log = Path.Combine(Path.GetTempPath(), "xdeck-update.log");
+        Action<string> say = delegate (string line) { try { File.AppendAllText(log, DateTime.Now.ToString("s") + " " + line + "\r\n"); } catch { } };
+        try
+        {
+            try { using (Process p = Process.GetProcessById(pid)) p.WaitForExit(20000); } catch (ArgumentException) { }
+            string src = Path.GetDirectoryName(Application.ExecutablePath);
+            say("applying " + src + " -> " + target);
+            List<string> files = new List<string>(Directory.GetFiles(src, "*", SearchOption.AllDirectories));
+            string self = Path.Combine(src, "Xdeck.exe");
+            files.Remove(self);
+            files.Add(self);
+            int failed = 0;
+            foreach (string f in files)
+            {
+                string dest = Path.Combine(target, f.Substring(src.Length).TrimStart('\\'));
+                try { CopyOver(f, dest); }
+                catch (Exception ex) { failed++; say("failed " + dest + ": " + ex.Message); }
+            }
+            say(failed == 0 ? "done" : failed + " files failed");
+            if (relaunch) Process.Start("explorer.exe", "\"" + Path.Combine(target, "Xdeck.exe") + "\"");
+            return failed == 0 ? 0 : 2;
+        }
+        catch (Exception ex) { say("error: " + ex.Message); return 1; }
+    }
+
+    // A file another copy still has open (another Windows user's Xdeck) can be renamed but not
+    // overwritten: move it aside as .old-xdeck, which the next start deletes.
+    static void CopyOver(string src, string dest)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(dest));
+        try { File.Copy(src, dest, true); return; }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        string aside = dest + ".old-xdeck";
+        if (File.Exists(aside)) { try { File.Delete(aside); } catch { aside = dest + "." + DateTime.Now.Ticks + ".old-xdeck"; } }
+        File.Move(dest, aside);
+        File.Copy(src, dest, true);
     }
 }
 
@@ -2029,6 +2329,9 @@ class WebPanel : Form
                 try { Audio.SetMute((string)m["id"], Convert.ToBoolean(m["m"])); } catch { }
                 SendState();
                 break;
+            case "update":                                      // "Restart to update"
+                if (XdeckApp.PanelUpdate != null) XdeckApp.PanelUpdate();
+                break;
             case "mouse":                                       // the switch in a controller's page
                 try
                 {
@@ -2073,6 +2376,8 @@ class WebPanel : Form
                 { "canMouse", Gamepad(p.Kind) && Inputs.Find(p.Kind, p.Index) != null },
                 { "mouse", MouseMode.IsOn(Inputs.Find(p.Kind, p.Index)) } }; }) },
             { "mouseKey", Shortcuts.MouseText },
+            { "version", Updater.Current },
+            { "update", Updater.Now == Updater.State.Ready ? Updater.Version : null },
         });
     }
 
@@ -2130,8 +2435,17 @@ class XdeckApp : Form
         menu.Items.Add(autostart);
         menu.Items.Add("Edit shortcuts…", null, delegate { EditShortcuts(); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit Xdeck", null, delegate { tray.Visible = false; Application.Exit(); });
+        updateItem = new ToolStripMenuItem("Restart to update");
+        updateItem.Font = new Font(updateItem.Font, FontStyle.Bold);
+        updateItem.Visible = false;
+        updateItem.Click += delegate { InstallUpdate(); };
+        menu.Items.Add(updateItem);
+        checkItem = new ToolStripMenuItem("Check for updates");
+        checkItem.Click += delegate { userCheck = true; Updater.CheckNow(); };
+        menu.Items.Add(checkItem);
+        menu.Items.Add("Quit Xdeck", null, delegate { Quit(); });
         tray.ContextMenuStrip = menu;
+        tray.BalloonTipClicked += delegate { if (balloonIsUpdate) InstallUpdate(); };
         panel.Prewarm();
 
         // keep the gear on the taskbar instead of under the ^ arrow (first run per user)
@@ -2199,6 +2513,70 @@ class XdeckApp : Form
         });
         w.IsBackground = true;
         w.Start();
+
+        // Self-update: checks in the background; "Xdeck.exe --update" installs a ready update.
+        Updater.Changed = delegate { if (IsHandleCreated) BeginInvoke((MethodInvoker)UpdateChanged); };
+        Updater.Start();
+        PanelUpdate = delegate { InstallUpdate(); };
+        Thread u = new Thread(delegate ()
+        {
+            using (EventWaitHandle ev = new EventWaitHandle(false, EventResetMode.AutoReset, "Xdeck_install_update"))
+                while (true)
+                {
+                    ev.WaitOne();
+                    if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { InstallUpdate(); });
+                }
+        });
+        u.IsBackground = true;
+        u.Start();
+    }
+
+    // ------------------------------------------------ updates
+    public static Action PanelUpdate;     // the panel's "Restart to update"
+    ToolStripMenuItem updateItem, checkItem;
+    bool userCheck, balloonIsUpdate;
+    string announced;                     // the version whose "ready" notification was shown
+
+    void UpdateChanged()
+    {
+        Updater.State st = Updater.Now;
+        bool ready = st == Updater.State.Ready;
+        updateItem.Visible = ready;
+        updateItem.Text = "Restart to update to " + Updater.Version;
+        checkItem.Enabled = st != Updater.State.Checking && st != Updater.State.Downloading;
+        checkItem.Text = st == Updater.State.Checking ? "Checking for updates…"
+                       : st == Updater.State.Downloading ? "Downloading " + Updater.Version + "…" : "Check for updates";
+        if (ready && (announced != Updater.Version || userCheck))
+        {
+            announced = Updater.Version;
+            userCheck = false;
+            Balloon("Xdeck " + Updater.Version + " is ready", "Click here to restart Xdeck and update. Quitting Xdeck installs it too.", true);
+        }
+        else if (userCheck && st == Updater.State.UpToDate) { userCheck = false; Balloon("Xdeck is up to date", "Version " + Updater.Current + ".", false); }
+        else if (userCheck && st == Updater.State.Failed) { userCheck = false; Balloon("Xdeck could not check for updates", Updater.Error ?? "", false); }
+        panel.SendState();
+    }
+
+    void Balloon(string title, string text, bool update)
+    {
+        balloonIsUpdate = update;
+        tray.ShowBalloonTip(update ? 10000 : 4000, title, text.Length > 0 ? text : " ", ToolTipIcon.Info);
+    }
+
+    void InstallUpdate()
+    {
+        string error;
+        if (Updater.Install(true, out error)) { tray.Visible = false; Application.Exit(); }
+        else Balloon("Xdeck could not update", error, false);
+    }
+
+    // Quitting installs a ready update when it needs no administrator prompt.
+    void Quit()
+    {
+        string error;
+        if (Updater.Now == Updater.State.Ready && Updater.FolderWritable(AppPaths.Exe)) Updater.Install(false, out error);
+        tray.Visible = false;
+        Application.Exit();
     }
 
     // Tray glyph: an 8-tooth gear with a round hole.
@@ -2280,6 +2658,7 @@ class XdeckApp : Form
     {
         string text = string.Join("\n", problems.ToArray());
         if (text.Length > 240) text = text.Substring(0, 239) + "…";
+        balloonIsUpdate = false;
         tray.ShowBalloonTip(8000, "Xdeck shortcuts", text, ToolTipIcon.Warning);
     }
 
@@ -2328,6 +2707,7 @@ class XdeckApp : Form
         else
         {
             string p = Shortcuts.PanelText.Length > 0 ? Shortcuts.PanelText : "off";
+            balloonIsUpdate = false;
             tray.ShowBalloonTip(3000, "Xdeck shortcuts updated", "Panel: " + p, ToolTipIcon.Info);
         }
     }
@@ -2472,16 +2852,23 @@ static class Program
     static void Main(string[] args)
     {
         if (args.Length >= 2 && args[0] == "--icons") { SetProcessDPIAware(); IconSheet(args[1]); return; }
+        // the unpacked update copying itself over the installed copy (Updater.Install)
+        int oldPid;
+        if (args.Length >= 3 && args[0] == "--apply-update" && int.TryParse(args[2], out oldPid))
+        {
+            Environment.Exit(Updater.ApplyFromHere(args[1], oldPid, Array.IndexOf(args, "--relaunch") >= 0));
+            return;
+        }
         bool created;
         using (Mutex mutex = new Mutex(true, "Xdeck_single_instance", out created))
         {
             if (!created)
             {
-                if (Array.IndexOf(args, "--panel") >= 0)
-                {
-                    EventWaitHandle ev;
-                    if (EventWaitHandle.TryOpenExisting("Xdeck_show_panel", out ev)) using (ev) ev.Set();
-                }
+                // "Xdeck.exe --panel" opens the running copy's panel; "--update" installs its ready update
+                string signal = Array.IndexOf(args, "--panel") >= 0 ? "Xdeck_show_panel"
+                              : Array.IndexOf(args, "--update") >= 0 ? "Xdeck_install_update" : null;
+                EventWaitHandle ev;
+                if (signal != null && EventWaitHandle.TryOpenExisting(signal, out ev)) using (ev) ev.Set();
                 return;
             }
             SetProcessDPIAware();

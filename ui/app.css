@@ -104,6 +104,9 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .switch b { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--dim); transition: left .15s, background .15s; }
 .switch.on { background: var(--accent); }
 .switch.on b { left: 19px; background: #fff; }
+.update-card { margin: 4px 0 6px; box-shadow: inset 0 0 0 1.2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.update-go { flex: none; padding: 5px 12px; border-radius: 6px; background: var(--accent); color: #fff; font: 600 12px "Segoe UI", sans-serif; }
+.version-line { color: var(--faint); font-size: 11px; text-align: center; margin-top: 6px; }
 #tmouse { margin: 12px 0 6px; }
 #tmouse .card { margin-bottom: 0; }
 .wired.mouse-chip { color: var(--accent); }

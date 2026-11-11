@@ -6,7 +6,8 @@
 //   {type:"shortcuts", combo}                   shortcuts.ini was saved
 //   {type:"pad", btn}                           controller navigation: up down left right a b x start bhold
 // and receives:
-//   {type:"size", w, h}  {type:"close"}  {type:"select", id}  {type:"mouse", key, on}
+//   {type:"size", w, h}  {type:"close"}  {type:"select", id}  {type:"mouse", key, on}  {type:"update"}
+// state.version is this build; state.update the downloaded release waiting for a restart (or null).
 // each pad in state also carries canMouse / mouse (that controller as a mouse); state.mouseKey is
 // the mouse shortcut.
 "use strict";
@@ -37,6 +38,7 @@ const I = {
   handbrake: '<svg viewBox="0 0 24 24"><path d="M6.5 21h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="9.8" y="10" width="4.4" height="10" rx="1.6" fill="currentColor"/><path d="M12 11L16.2 4.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><circle cx="16.6" cy="3.6" r="2.2" fill="currentColor"/></svg>',
   chev: '<svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  update: '<svg viewBox="0 0 24 24"><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   cursor: '<svg viewBox="0 0 24 24"><path d="M5 2.8l13.6 11.1-6.1.6 3.6 6.9-2.6 1.3-3.5-7L5.6 20z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   back: '<svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
@@ -166,6 +168,11 @@ function batteryHtml(p) {
 
 function panelHtml() {
   let h = `<div class="view panel"><header><span class="mark">${I.gear}</span><h1>Xdeck</h1><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
+  if (state.update)
+    h += `<div class="card update-card" data-act="update" data-nav="update">
+            <span class="disc">${I.update}</span>
+            <span class="who"><div class="nm">Xdeck ${esc(state.update)} is ready</div><div class="sub">Restart to update</div></span>
+            <span class="update-go">Restart</span></div>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
   h += `<h2>Controllers</h2>`;
@@ -175,6 +182,7 @@ function panelHtml() {
             <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
             <span class="who"><div class="nm">${esc(p.name)}</div></span>
             ${p.mouse ? `<span class="wired mouse-chip">Mouse</span>` : ""}${batteryHtml(p)}</div>`;
+  if (state.version) h += `<div class="version-line">Xdeck ${esc(state.version)}</div>`;
   if (padMode)
     h += `<div class="pad-help"><span><b>A ✕</b> select</span><span><b>B ◯</b> back</span><span><b>X ▢</b> mute</span><span><b>◀ ▶</b> volume · device</span></div>
           ${panelCombo ? `<div class="hint-line pad-combo">${esc(panelCombo)} hides the panel</div>` : ""}`;
@@ -642,6 +650,7 @@ $app.addEventListener("click", (e) => {
   else if (act === "select") { send({ type: "select", id: t.dataset.id }); expanded = 0; render(); }
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
+  else if (act === "update") send({ type: "update" });
   else if (act === "mouse") {
     const p = state.pads.find((x) => x.key === t.dataset.key);
     if (p) send({ type: "mouse", key: p.key, on: !p.mouse });
