@@ -51,7 +51,7 @@ Xdeck lives in the system tray as a gear:
 |---|---|
 | **Audio output** | See the active output and its live level. Click it to list the others and pick one. Volume slider (drag or scroll), mute. |
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
-| **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. Below them, one thin line per mouse, keyboard or other wireless device, with its battery. |
+| **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. Below them, a circle per mouse, keyboard or other wireless device: its icon, with a ring that fills with the battery. |
 | **Updates** | The version, what the updater is doing (a progress bar while it downloads), and **Check now** / **Restart to update**. |
 
 ## Devices that connect
@@ -216,8 +216,8 @@ pelo próprio controle.
   instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por
   atualização. As configurações ficam. No rodapé do painel, **Updates** mostra a versão, a barra de
   progresso do download e os botões **Check now** / **Restart to update**.
-- **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel, numa linha fina cada, embaixo
-  dos controles, com a bateria.
+- **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel como círculos embaixo dos
+  controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).

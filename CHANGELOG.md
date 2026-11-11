@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 — 2026-11-11
+
+- Mice, keyboards and other wireless devices are circles now, side by side under the controllers:
+  the icon inside, and a ring around it that fills with the battery (green, amber, red when low),
+  the percent below, the name on hover. A USB receiver gets a dashed ring.
+
 ## 0.4.1 — 2026-11-11
 
 - **Mice, keyboards and other wireless devices in the panel**: one thin line each under the

@@ -170,15 +170,22 @@ function batteryHtml(p) {
   return `<span class="battery${p.charging ? " charging" : ""}" style="--bat:${color};color:${color}" title="${p.charging ? "Charging" : "On battery"}">${p.charging ? BOLT : ""}${p.battery}%<span class="pills">${pills}</span></span>`;
 }
 
-// The small battery of a device line: percent and 5 pills; "USB" on a cable; nothing if unknown.
-function batteryMini(d) {
-  if (d.conn === "USB") return `<span class="mini-bat dim">USB</span>`;
-  if (d.battery < 0) return "";
-  const color = d.battery <= 20 ? "var(--red)" : d.battery <= 45 ? "var(--amber)" : "var(--green)";
-  const lit = Math.max(1, Math.ceil(d.battery / 20));
-  let pills = "";
-  for (let i = 0; i < 5; i++) pills += `<i class="${i < lit ? "lit" : ""}"></i>`;
-  return `<span class="mini-bat" style="--bat:${color};color:${color}">${d.charging ? BOLT : ""}${d.battery}%<span class="mini-pills">${pills}</span></span>`;
+// A device as a circle: its icon, and a ring that fills with the battery (red when low). No
+// battery known: a faint ring; a USB receiver: a dashed one. The name shows on hover.
+function ringHtml(d) {
+  const r = 19, c = 2 * Math.PI * r;
+  const has = d.conn !== "USB" && d.battery >= 0;
+  const color = !has ? "var(--dim)" : d.battery <= 20 ? "var(--red)" : d.battery <= 45 ? "var(--amber)" : "var(--green)";
+  const arc = has ? `<circle class="ring-fill" cx="22" cy="22" r="${r}" stroke="${color}" stroke-dasharray="${(c * d.battery / 100).toFixed(1)} ${c.toFixed(1)}"/>` : "";
+  const label = d.conn === "USB" ? "USB" : has ? `${d.battery}%` : "";
+  const tip = `${d.name}${has ? " · " + d.battery + "%" : d.conn === "USB" ? " · USB" : ""}${d.charging ? " · charging" : ""}`;
+  return `<div class="ring-dev" title="${esc(tip)}">
+      <span class="ring">
+        <svg viewBox="0 0 44 44"><circle class="ring-track${d.conn === "USB" ? " usb" : ""}" cx="22" cy="22" r="${r}"/>${arc}</svg>
+        <span class="ring-ico">${I[d.glyph] || (d.conn === "USB" ? I.usb : I.bt)}</span>
+      </span>
+      <span class="ring-lbl" style="color:${has ? color : "var(--dim)"}">${d.charging ? BOLT : ""}${label}</span>
+    </div>`;
 }
 
 function panelHtml() {
@@ -192,13 +199,12 @@ function panelHtml() {
             <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
             <span class="who"><div class="nm">${esc(p.name)}</div></span>
             ${p.mouse ? `<span class="wired mouse-chip">Mouse</span>` : ""}${batteryHtml(p)}</div>`;
-  // mice, keyboards and other wireless devices: one thin line each, under the controllers
+  // mice, keyboards and other wireless devices: a circle each under the controllers, the icon
+  // inside and a ring around it that fills with the battery
   const devs = state.devices || [];
   if (devs.length) {
-    h += `<div class="mini-list">`;
-    for (const d of devs)
-      h += `<div class="mini-row"><span class="mini-ico">${I[d.glyph] || (d.conn === "USB" ? I.usb : I.bt)}</span>
-              <span class="mini-nm">${esc(d.name)}</span>${batteryMini(d)}</div>`;
+    h += `<div class="ring-row">`;
+    for (const d of devs) h += ringHtml(d);
     h += `</div>`;
   }
   h += `<div id="updates">${updatesHtml()}</div>`;
