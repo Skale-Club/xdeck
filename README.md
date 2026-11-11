@@ -26,9 +26,9 @@ running (one per signed-in user).
 
 Xdeck lives in the system tray as a gear:
 
-- **Left click**: open or close the panel. It stays open until you close it (×, Esc or another click).
+- **Left click**: open or close the panel. A click anywhere outside it, ×, or Esc closes it too.
 - **Right click**: open the panel, next / previous audio output, **Start with Windows**,
-  **Controller as mouse**, **Edit shortcuts…**, quit.
+  **Edit shortcuts…**, quit.
 
 ## The panel
 
@@ -67,9 +67,10 @@ the background still sees these presses.
 
 ## The controller as a mouse
 
-Hold **L1 + D-pad right** and press **Square** (Xbox: LB + right + X) to turn any controller into a
-mouse, and again to turn it back. The **Use as mouse** switch in the panel and **Controller as
-mouse** in the tray menu do the same; a banner says On or Off.
+Each controller can be a mouse on its own. Hold **L1 + D-pad right** and press **Square** (Xbox: LB
++ right + X) on a controller to turn it into a mouse, and again to turn it back; or open its page in
+the panel (click its card) and flip **Use as mouse**. A banner names the controller and says on or
+off, and its card shows **Mouse** while it is one.
 
 | Controller | Mouse / keyboard |
 |---|---|
@@ -127,7 +128,7 @@ mouse.speed = 1400                 # pointer pixels per second at full tilt (200
 ```
 
 C# 5 on the .NET Framework 4.8 compiler that ships with Windows (no SDK needed). `src\Xdeck.cs` is
-the native host; `ui\` is the panel in HTML/SVG; `lib\` holds the WebView2 SDK DLLs
+the native host; `ui\` is the panel in HTML/SVG; `tools\MakeIcon.cs` draws the app icon at build time; `lib\` holds the WebView2 SDK DLLs
 (`Microsoft.Web.WebView2` 1.0.4258.31 from NuGet). Third-party artwork and its licences:
 [`ui/licenses/README.md`](ui/licenses/README.md).
 
@@ -143,7 +144,7 @@ pelo próprio controle.
   PowerShell* e aprove o pedido de administrador. Vai para `C:\Program Files\Xdeck`, entra no Menu
   Iniciar e abre com o Windows para todo mundo. Só para você: `install.ps1 -CurrentUser`.
   Portátil: dois cliques em `Xdeck.exe` na pasta descompactada.
-- **Painel:** clique esquerdo na engrenagem. Fica aberto até você fechar.
+- **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).
 - **Testar um controle:** clique no cartão dele no painel.
@@ -152,7 +153,8 @@ pelo próprio controle.
   navega, esquerda/direita troca o dispositivo ou ajusta o volume, **A (✕)** escolhe, **X (▢)** muta,
   **B (◯)** volta ou fecha, e segurar **B (◯)** sai do teste de controle.
 - **Controle como mouse:** segure **L1 + direcional direita** e aperte **quadrado** (Xbox: LB +
-  direita + X) para ligar ou desligar; também tem a chave **Use as mouse** no painel. Analógico
+  direita + X) no controle que vai virar mouse, para ligar ou desligar; ou abra a tela dele no painel
+  (clique no cartão) e use a chave **Use as mouse**. Cada controle liga o seu. Analógico
   esquerdo move o cursor (segure L2 / LT para ir devagar), analógico direito rola, **✕/A** clica (segure
   para arrastar), **◯/B** é o botão direito, **▢/X** o do meio, direcional = setas, Options = Enter,
   Share = Esc. Com o painel aberto, o controle volta a mexer no painel.

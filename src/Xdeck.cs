@@ -838,15 +838,28 @@ static class Inputs
 {
     static readonly List<PadState> all = new List<PadState>();
     public static void Add(PadState s) { lock (all) if (!all.Contains(s)) all.Add(s); }
-    public static void Remove(PadState s) { lock (all) all.Remove(s); }
+    public static void Remove(PadState s)
+    {
+        lock (all) all.Remove(s);
+        MouseMode.Set(s, false);           // a controller that goes away stops being a mouse
+    }
 
     // The n-th (0-based) live controller of a kind, in a stable order.
     public static PadState Find(string kind, int n)
     {
+        List<PadState> k = OfKind(kind);
+        return n >= 0 && n < k.Count ? k[n] : null;
+    }
+
+    // Its position among the live controllers of its kind (the n Find takes), -1 if not live.
+    public static int IndexOf(PadState s) { return s == null ? -1 : OfKind(s.Kind).IndexOf(s); }
+
+    static List<PadState> OfKind(string kind)
+    {
         List<PadState> k = new List<PadState>();
         lock (all) foreach (PadState s in all) if (s.Kind == kind) k.Add(s);
         k.Sort(delegate (PadState a, PadState b) { return string.Compare(a.Key, b.Key, StringComparison.Ordinal); });
-        return n >= 0 && n < k.Count ? k[n] : null;
+        return k;
     }
 }
 
@@ -1020,22 +1033,31 @@ class ShortcutTracker
 }
 
 // ---------------------------------------------------------------- controller as mouse
-// Turned on and off with the mouse shortcut (L1 + D-pad right + Square by default) or the tray
-// menu. While it is on and the panel is closed, every controller drives the pointer.
+// Each controller is a mouse on its own: the mouse shortcut (L1 + D-pad right + Square by default)
+// turns it on and off for the controller that pressed it, and the switch in a controller's page
+// for that controller. While it is on and the panel is closed, that controller drives the pointer.
 static class MouseMode
 {
-    public static volatile bool On;
-    public static Action<bool> Changed;   // set by the app; called from whichever thread changed it
+    static readonly HashSet<PadState> on = new HashSet<PadState>();
+    public static Action<PadState, bool> Changed;   // set by the app; called from whichever thread changed it
 
-    public static void Set(bool on)
+    public static bool IsOn(PadState s)
     {
-        if (On == on) return;
-        On = on;
-        Action<bool> c = Changed;
-        if (c != null) c(on);
+        if (s == null) return false;
+        lock (on) return on.Contains(s);
     }
 
-    public static void Toggle() { Set(!On); }
+    public static void Set(PadState s, bool value)
+    {
+        if (s == null) return;
+        bool changed;
+        lock (on) changed = value ? on.Add(s) : on.Remove(s);
+        if (!changed) return;
+        Action<PadState, bool> c = Changed;
+        if (c != null) c(s, value);
+    }
+
+    public static void Toggle(PadState s) { Set(s, !IsOn(s)); }
 }
 
 // One controller as a mouse:
@@ -1174,10 +1196,10 @@ class PadHooks
             Action t = Toggle;
             if (t != null) t();
         }
-        if (mouseKey.Update(Shortcuts.Mouse, bits, before, pressed, now)) { held.Clear(); MouseMode.Toggle(); }
+        if (mouseKey.Update(Shortcuts.Mouse, bits, before, pressed, now)) { held.Clear(); MouseMode.Toggle(s); }
         if (!InSequence) Flush();          // a sequence broke or timed out: what it held back goes out
 
-        mouse.Update(s, bits, pressed, MouseMode.On && !NavActive, Shortcuts.Guard, now);
+        mouse.Update(s, bits, pressed, !NavActive && MouseMode.IsOn(s), Shortcuts.Guard, now);
 
         if (!NavActive) { held.Clear(); dirHeld = Wait; bFired = true; return; }
 
@@ -1859,8 +1881,22 @@ class WebPanel : Form
 
     public void Toggle()
     {
+        // Clicking the tray icon while the panel is open first takes the focus away (which closes
+        // it, below), then arrives here: that click meant "close", so don't open it again.
+        if (!Open && (DateTime.Now - closedByClickAway).TotalMilliseconds < 500) return;
         if (Open) HidePanel();
         else ShowPanel();
+    }
+
+    DateTime closedByClickAway;
+
+    // A click anywhere outside the panel closes it, like the other tray panels.
+    protected override void OnDeactivate(EventArgs e)
+    {
+        base.OnDeactivate(e);
+        if (!Open) return;
+        closedByClickAway = DateTime.Now;
+        HidePanel();
     }
 
     // The controller sequence: open or hide, and remember that a controller drives it.
@@ -1993,8 +2029,14 @@ class WebPanel : Form
                 try { Audio.SetMute((string)m["id"], Convert.ToBoolean(m["m"])); } catch { }
                 SendState();
                 break;
-            case "mouse":
-                try { MouseMode.Set(Convert.ToBoolean(m["on"])); } catch { }
+            case "mouse":                                       // the switch in a controller's page
+                try
+                {
+                    string key = (string)m["key"];
+                    foreach (Pad p in Pads.List())
+                        if (p.Mac == key) { MouseMode.Set(Inputs.Find(p.Kind, p.Index), Convert.ToBoolean(m["on"])); break; }
+                }
+                catch { }
                 break;
         }
     }
@@ -2027,10 +2069,14 @@ class WebPanel : Form
             { "defOut", defOut }, { "defMic", defMic },
             { "pads", pads.ConvertAll(delegate (Pad p) { return (object)new Dictionary<string, object> {
                 { "key", p.Mac }, { "kind", p.Kind }, { "name", p.Name }, { "index", p.Index },
-                { "battery", p.Battery }, { "charging", p.Charging }, { "conn", p.Conn } }; }) },
-            { "mouse", MouseMode.On }, { "mouseKey", Shortcuts.MouseText },
+                { "battery", p.Battery }, { "charging", p.Charging }, { "conn", p.Conn },
+                { "canMouse", Gamepad(p.Kind) && Inputs.Find(p.Kind, p.Index) != null },
+                { "mouse", MouseMode.IsOn(Inputs.Find(p.Kind, p.Index)) } }; }) },
+            { "mouseKey", Shortcuts.MouseText },
         });
     }
+
+    static bool Gamepad(string kind) { return kind == "xbox" || kind == "dualsense" || kind == "switchpro" || kind == "joycon"; }
 
     // the controller mouse was turned on or off (from any place): refresh its switch
     public void MouseChanged() { SendState(); }
@@ -2057,7 +2103,6 @@ class XdeckApp : Form
     readonly Banner banner = new Banner();
     readonly WebPanel panel = new WebPanel();
     readonly NotifyIcon tray = new NotifyIcon();
-    ToolStripMenuItem mouseItem;
 
     public XdeckApp()
     {
@@ -2083,9 +2128,6 @@ class XdeckApp : Form
         if (Autostart.ForAllUsers()) { autostart.Text = "Start with Windows (all users)"; autostart.Enabled = false; }
         else autostart.Click += delegate { Autostart.Set(!Autostart.IsOn()); autostart.Checked = Autostart.IsOn(); };
         menu.Items.Add(autostart);
-        mouseItem = new ToolStripMenuItem("Controller as mouse");
-        mouseItem.Click += delegate { MouseMode.Toggle(); };
-        menu.Items.Add(mouseItem);
         menu.Items.Add("Edit shortcuts…", null, delegate { EditShortcuts(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit Xdeck", null, delegate { tray.Visible = false; Application.Exit(); });
@@ -2113,18 +2155,20 @@ class XdeckApp : Form
         {
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.Nav(what); });
         };
-        // Controller as mouse: input goes straight out from the controller threads; the banner, the
-        // tray check and the panel switch follow on the UI thread.
+        // Controller as mouse: input goes straight out from the controller threads; the banner and
+        // the switch in the controller's page follow on the UI thread.
         PadMouse.Move = Inject.Move;
         PadMouse.Scroll = Inject.Scroll;
         PadMouse.Click = Inject.Click;
         PadMouse.Key = Inject.Key;
-        MouseMode.Changed = delegate (bool on)
+        MouseMode.Changed = delegate (PadState s, bool on)
         {
+            int n = Inputs.IndexOf(s);
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate
             {
-                mouseItem.Checked = on;
-                banner.Show("Controller mouse", on ? "On" : "Off", "pad", 0, 0);
+                string name = s.Kind;
+                try { foreach (Pad p in Pads.List()) if (p.Kind == s.Kind && p.Index == n) { name = p.Name; break; } } catch { }
+                banner.Show("Controller as mouse", name + (on ? ": on" : ": off"), "pad", 0, 0);
                 panel.MouseChanged();
             });
         };

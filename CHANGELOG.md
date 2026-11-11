@@ -4,10 +4,13 @@
 
 - Open and hide the panel from any controller: hold L1 + D-pad right and press Triangle (LB + right
   + Y on Xbox). Hiding it gives the focus back to the window that had it, usually the game.
-- Controller as a mouse: L1 + D-pad right + Square (LB + right + X on Xbox), the **Use as mouse**
-  switch in the panel or the tray menu turn it on and off. Left stick = pointer (LT / L2 for fine
-  moves), right stick = scroll, A / B / X = left / right / middle click, D-pad = arrow keys,
-  Menu = Enter, View = Esc. It waits while the panel is open.
+- Each controller can be a mouse on its own: L1 + D-pad right + Square (LB + right + X on Xbox) on
+  that controller, or the **Use as mouse** switch in its page, turns it on and off; its card shows
+  **Mouse**. Left stick = pointer (LT / L2 for fine moves), right stick = scroll, A / B / X = left /
+  right / middle click, D-pad = arrow keys, Menu = Enter, View = Esc. It waits while the panel is open.
+- A click anywhere outside the panel closes it, like other tray panels.
+- `Xdeck.exe` has its own icon (the white gear on a blue tile) in Explorer, Start and the Task
+  Manager; `tools\MakeIcon.cs` draws it on every build.
 - Shortcuts live in `shortcuts.ini` in the data folder (tray menu › **Edit shortcuts…**): the panel
   shortcut (buttons held together with `+` or one after another with `,`), the audio combo buttons and
   the two keyboard hotkeys. Xdeck reads the file again when it is saved, with no restart or new

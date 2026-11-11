@@ -6,8 +6,9 @@
 //   {type:"shortcuts", combo}                   shortcuts.ini was saved
 //   {type:"pad", btn}                           controller navigation: up down left right a b x start bhold
 // and receives:
-//   {type:"size", w, h}  {type:"close"}  {type:"select", id}  {type:"mouse", on}
-// state also carries mouse (the controller mouse is on) and mouseKey (its shortcut).
+//   {type:"size", w, h}  {type:"close"}  {type:"select", id}  {type:"mouse", key, on}
+// each pad in state also carries canMouse / mouse (that controller as a mouse); state.mouseKey is
+// the mouse shortcut.
 "use strict";
 
 const host = window.chrome && window.chrome.webview;
@@ -173,13 +174,7 @@ function panelHtml() {
     h += `<div class="card" data-act="test" data-key="${esc(p.key)}" data-nav="card-${esc(p.key)}">
             <span class="disc">${PAD_BRAND[p.kind] ? logo(PAD_BRAND[p.kind], "big") : padIcon(p.kind)}</span>
             <span class="who"><div class="nm">${esc(p.name)}</div></span>
-            ${batteryHtml(p)}</div>`;
-  // the mouse waits while the panel is open (the controller drives the panel then)
-  const mouseSub = (state.mouse ? "On · " : "") + (state.mouseKey ? esc(state.mouseKey) : "No shortcut");
-  h += `<div class="card switch-row" data-act="mouse" data-nav="mouse" role="switch" aria-checked="${state.mouse ? "true" : "false"}">
-          <span class="disc">${I.cursor}</span>
-          <span class="who"><div class="nm">Use as mouse</div><div class="sub">${mouseSub}</div></span>
-          <span class="switch${state.mouse ? " on" : ""}"><b></b></span></div>`;
+            ${p.mouse ? `<span class="wired mouse-chip">Mouse</span>` : ""}${batteryHtml(p)}</div>`;
   if (padMode)
     h += `<div class="pad-help"><span><b>A ✕</b> select</span><span><b>B ◯</b> back</span><span><b>X ▢</b> mute</span><span><b>◀ ▶</b> volume · device</span></div>
           ${panelCombo ? `<div class="hint-line pad-combo">${esc(panelCombo)} hides the panel</div>` : ""}`;
@@ -201,10 +196,21 @@ function testerHtml(p) {
         <div class="side"><span class="trig" data-trig="6"><b></b><span>${sh[2]}</span></span><span class="sh" data-btn="4">${sh[0]}</span></div>
         <div class="side"><span class="sh" data-btn="5">${sh[1]}</span><span class="trig" data-trig="7"><b></b><span>${sh[3]}</span></span></div></div>`;
   h += `<div class="stage" id="stage">${stageHtml(p)}</div>`;
+  if (p.canMouse) h += `<div id="tmouse">${mouseSwitchHtml(p)}</div>`;
   if (["xbox", "dualsense", "switchpro", "joycon"].includes(p.kind))
     h += `<div class="hint-line">Audio output: hold D-pad right + ${p.kind === "xbox" ? "LB" : (SHOULDERS[p.kind] || ["L1"])[0]} and flick the right stick</div>`;
   h += `<div class="hint-line">Back to the panel: hold ${p.kind === "dualsense" ? "◯" : p.kind === "switchpro" || p.kind === "joycon" ? "A" : "B"} on any controller</div>`;
   return h + `</div>`;
+}
+
+// This controller as a mouse. The mouse waits while the panel is open (the controller drives the
+// panel then), so it starts working once the panel is closed.
+function mouseSwitchHtml(p) {
+  const key = state.mouseKey ? `${esc(state.mouseKey)} on this controller` : "Turn it on here";
+  return `<div class="card switch-row" data-act="mouse" data-key="${esc(p.key)}" role="switch" aria-checked="${p.mouse ? "true" : "false"}">
+      <span class="disc">${I.cursor}</span>
+      <span class="who"><div class="nm">Use as mouse</div><div class="sub">${p.mouse ? "On · works once the panel is closed" : key}</div></span>
+      <span class="switch${p.mouse ? " on" : ""}"><b></b></span></div>`;
 }
 
 function stageHtml(p) {
@@ -498,10 +504,12 @@ function render() {
     const p = state.pads.find((x) => x.key === testing.key);
     if (!p) { view = "panel"; testing = null; }
     else if (!document.querySelector(".tester")) { testing = p; $app.innerHTML = testerHtml(p); loadArt(); }
-    else {                                       // tester stays mounted; only refresh its battery
+    else {                                       // tester stays mounted; only refresh its battery and mouse switch
       testing = p;
       const tb = document.getElementById("tbat");
       if (tb) tb.innerHTML = p.conn === "USB" ? "" : batteryHtml(p);
+      const tm = document.getElementById("tmouse");
+      if (tm) tm.innerHTML = mouseSwitchHtml(p);
       return postSize();
     }
   }
@@ -634,7 +642,10 @@ $app.addEventListener("click", (e) => {
   else if (act === "select") { send({ type: "select", id: t.dataset.id }); expanded = 0; render(); }
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
-  else if (act === "mouse") send({ type: "mouse", on: !state.mouse });
+  else if (act === "mouse") {
+    const p = state.pads.find((x) => x.key === t.dataset.key);
+    if (p) send({ type: "mouse", key: p.key, on: !p.mouse });
+  }
 });
 
 document.addEventListener("keydown", (e) => {

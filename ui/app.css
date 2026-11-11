@@ -104,6 +104,9 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .switch b { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--dim); transition: left .15s, background .15s; }
 .switch.on { background: var(--accent); }
 .switch.on b { left: 19px; background: #fff; }
+#tmouse { margin: 12px 0 6px; }
+#tmouse .card { margin-bottom: 0; }
+.wired.mouse-chip { color: var(--accent); }
 .battery { display: flex; align-items: center; gap: 8px; font: 600 13px "Segoe UI", sans-serif; white-space: nowrap; }
 .bolt { width: 10px; height: 14px; color: var(--amber); margin-right: -3px; }
 .pills { display: flex; gap: 3px; margin-left: 2px; }

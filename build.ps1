@@ -15,8 +15,17 @@ if (-not (Test-Path $csc)) { throw ".NET Framework 4.x compiler not found: $csc"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory $out | Out-Null
 $lib = Join-Path $root 'lib'
+
+# the app icon (tools\MakeIcon.cs draws it), embedded in Xdeck.exe for Explorer, Start and shortcuts
+$tmp = Join-Path $root 'build\tmp'
+New-Item -ItemType Directory $tmp -Force | Out-Null
+& $csc /nologo /target:exe /codepage:65001 /r:System.Drawing.dll "/out:$tmp\MakeIcon.exe" (Join-Path $root 'tools\MakeIcon.cs')
+if ($LASTEXITCODE -ne 0) { throw "Icon tool build failed ($LASTEXITCODE)" }
+& "$tmp\MakeIcon.exe" "$tmp\Xdeck.ico"
+if ($LASTEXITCODE -ne 0) { throw "Icon failed ($LASTEXITCODE)" }
+
 & $csc /nologo /target:winexe /platform:x64 /codepage:65001 /optimize+ `
-    "/win32manifest:$root\src\app.manifest" `
+    "/win32manifest:$root\src\app.manifest" "/win32icon:$tmp\Xdeck.ico" `
     "/r:$lib\Microsoft.Web.WebView2.Core.dll" "/r:$lib\Microsoft.Web.WebView2.WinForms.dll" /r:System.Web.Extensions.dll `
     "/out:$out\Xdeck.exe" (Join-Path $root 'src\Xdeck.cs')
 if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
