@@ -193,7 +193,7 @@ Target: Projects / Xdeck / Journal; data source unresolved.
 - Date: 2026-11-11
 - Type: Release
 - Area: UI
-- Status: Partial (production publication authorized; Cloudflare login in progress)
+- Status: Done (Cloudflare deployment and production asset verification passed)
 - Summary: Prepare the centered pairing screen and visible Xdeck name for the Cloudflare PWA,
   with a new service-worker shell cache. Desktop signed release remains separate.
 - Agent: Codex
@@ -242,3 +242,24 @@ it is refreshed or reopened; service-worker activation alone does not replace it
 
 Verify the Cloudflare account and current deployment, publish the approved PWA, read back the live
 HTML and service worker, and record the production version and result here.
+
+### Production result
+
+The first OAuth attempt timed out; the second succeeded with the owner's interactive browser
+authorization. Cloudflare authentication is now available on the Surface. Wrangler dry-run passed.
+Commit 8b23050 was integrated through dev into main and pushed before deployment. The previous
+production version was 9b47b863-4de8-471e-aebd-339efa132107 (the rollback target).
+
+At approximately 15:19 America/New_York, xdeck-remote was deployed to xdeck.skale.club as version
+7833c0c5-3e0d-4155-989e-225cb117d471. Production GETs of /, /sw.js and /manifest.webmanifest returned
+200 and SHA-256 hashes matching the deployed local assets exactly. Read-only routing checks passed:
+GET /pair and /discover returned 405; /pc and /phone without IDs returned 400. No pairing state,
+Durable Object migration or relay authentication code was changed. No browser capture was used.
+
+The owner can close and reopen the installed PWA to load the new screen. No reinstall or pairing
+reset is required. The desktop installer release still awaits its original signing key; this
+successful PWA deployment is independent of it. Journal synchronization to Notion remains pending
+because an Xdeck journal destination has not been located.
+
+Estimated publication duration: 5 minutes. Actual: approximately 7 minutes, including the OAuth
+retry. The deployment itself took approximately 8 seconds; read-back verification took 3 seconds.
