@@ -141,6 +141,24 @@ scene), `obs.mute.<audio source name>` (mute / unmute it) and `obs.hotkey.<OBS h
 OBS's own hotkeys, e.g. `OBSBasic.Screenshot`). Xdeck connects only when an OBS shortcut is pressed.
 OBS on another PC: set `obs.address` to its IP and port.
 
+## Phone remote
+
+Turn on **Phone remote** in the panel and point a phone's camera at the QR code (the phone must be
+on the same Wi-Fi). The link opens a page that makes the phone:
+
+| Tab | What it does |
+|---|---|
+| **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; Left / Middle / Right buttons |
+| **Keyboard** | What you type goes to the PC (any language, autocorrect too); Ctrl / Alt / Shift / Win, Esc, Tab, arrows, Alt+Tab, copy / paste |
+| **Media** | Play / pause, previous, next, volume, mute, fullscreen |
+| **Audio** | Switch the audio output, volume and mute |
+| **OBS** | Record, pause, stream, save replay, scenes, virtual camera |
+
+Nothing to install on the phone; add the page to the home screen to open it like an app. Only a
+phone that opened the pairing link can send anything, and **New link** unpairs every phone. Xdeck
+listens on port 8765; an install for everyone opens it in the firewall for private networks, and a
+copy installed only for you gets Windows' own prompt the first time.
+
 ## Switch the audio output without the panel
 
 - `Ctrl+Alt+F11` / `Ctrl+Alt+F10`: next / previous output.
@@ -216,6 +234,11 @@ pelo próprio controle.
   instala. Instalado para todos os usuários, o Windows pede aprovação de administrador uma vez por
   atualização. As configurações ficam. No rodapé do painel, **Updates** mostra a versão, a barra de
   progresso do download e os botões **Check now** / **Restart to update**.
+- **Controle pelo celular (tipo Unified Remote):** ligue **Phone remote** no painel e aponte a câmera
+  do celular para o QR code (mesmo Wi-Fi). O celular vira touchpad (toque = clique, dois dedos =
+  rolar, segurar = arrastar), teclado (o que você digita vai para o PC), teclas de mídia, troca de
+  saída de áudio e volume, e botões do OBS. Não precisa instalar nada no celular; dá para adicionar à
+  tela inicial. Só o celular pareado pelo link controla; **New link** despareia todos.
 - **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel como círculos embaixo dos
   controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-11-11
+
+- **Phone remote**, like Unified Remote: turn on **Phone remote** in the panel and scan its QR code
+  with a phone on the same Wi-Fi. The phone's browser becomes a touchpad (tap to click, two fingers
+  to scroll, two-finger tap for a right click, hold to drag), a keyboard (what you type goes to the
+  PC, with Ctrl / Alt / Shift / Win, arrows and shortcuts), media keys, the audio output switch and
+  volume, and OBS buttons. Nothing to install on the phone; add the page to the home screen to open
+  it like an app. Only a phone that opened the pairing link can send anything; **New link** unpairs
+  every phone. An install for everyone (and its updates) opens port 8765 on private networks.
+
 ## 0.4.2 — 2026-11-11
 
 - Mice, keyboards and other wireless devices are circles now, side by side under the controllers:

@@ -38,6 +38,7 @@ const I = {
   handbrake: '<svg viewBox="0 0 24 24"><path d="M6.5 21h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="9.8" y="10" width="4.4" height="10" rx="1.6" fill="currentColor"/><path d="M12 11L16.2 4.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><circle cx="16.6" cy="3.6" r="2.2" fill="currentColor"/></svg>',
   chev: '<svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><rect x="6.5" y="2" width="11" height="20" rx="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 18.5h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   mouse: '<svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 6.5v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
   keyboard: '<svg viewBox="0 0 24 24"><rect x="1.8" y="6" width="20.4" height="12.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 9.6h1.2M9.2 9.6h1.2M13 9.6h1.2M16.8 9.6h1.2M5.5 12.4h1.2M9.2 12.4h1.2M13 12.4h1.2M16.8 12.4h1.2M8 15.2h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
   bt: '<svg viewBox="0 0 24 24"><path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -207,11 +208,39 @@ function panelHtml() {
     for (const d of devs) h += ringHtml(d);
     h += `</div>`;
   }
+  h += remoteHtml();
   h += `<div id="updates">${updatesHtml()}</div>`;
   if (padMode)
     h += `<div class="pad-help"><span><b>A ✕</b> select</span><span><b>B ◯</b> back</span><span><b>X ▢</b> mute</span><span><b>◀ ▶</b> volume · device</span></div>
           ${panelCombo ? `<div class="hint-line pad-combo">${esc(panelCombo)} hides the panel</div>` : ""}`;
   return h + `</div>`;
+}
+
+// ------------------------------------------------------------ phone remote
+// Off: one switch. On: the QR code with the pairing link, how many phones are connected, and a
+// new link (which unpairs every phone).
+function remoteHtml() {
+  const r = state.remote;
+  if (!r) return "";
+  const sub = r.error ? esc(r.error) : !r.on ? "Use your phone as touchpad, keyboard and remote" :
+    r.clients ? `${r.clients} phone${r.clients > 1 ? "s" : ""} connected` : "Scan the code with your phone";
+  let h = `<h2>Phone remote</h2>
+    <div class="card switch-row" data-act="remote" data-nav="remote" role="switch" aria-checked="${r.on ? "true" : "false"}">
+      <span class="disc">${I.phone}</span>
+      <span class="who"><div class="nm">Phone remote</div><div class="sub">${sub}</div></span>
+      <span class="switch${r.on ? " on" : ""}"><b></b></span></div>`;
+  if (r.on && r.url && !r.error) {
+    let qr = "";
+    try { qr = QR.svg(r.url, 132); } catch (e) { qr = ""; }
+    h += `<div class="remote-pair">
+        ${qr}
+        <div class="remote-txt">
+          <div>Point your phone's camera at the code and open the link. The phone must be on the same Wi-Fi.</div>
+          <div class="remote-url">${esc(r.url.split("#")[0])}</div>
+          <button class="upd-btn" data-act="remote-new" data-nav="remote-new" title="Phones paired so far stop working">New link</button>
+        </div></div>`;
+  }
+  return h;
 }
 
 // ------------------------------------------------------------ updates
@@ -732,6 +761,8 @@ $app.addEventListener("click", (e) => {
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
   else if (act === "update") send({ type: "update" });
+  else if (act === "remote") send({ type: "remote", on: !(state.remote && state.remote.on) });
+  else if (act === "remote-new") send({ type: "remote-new" });
   else if (act === "check") { send({ type: "check" }); state.upd = { ...state.upd, state: "checking", error: null }; updateUpdates(); }
   else if (act === "mouse") {
     const p = state.pads.find((x) => x.key === t.dataset.key);

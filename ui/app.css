@@ -127,6 +127,10 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .upd-bar b { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; background: var(--accent); transition: width .2s; }
 .upd-bar.busy b { width: 35%; animation: upd-slide 1.1s ease-in-out infinite; }
 @keyframes upd-slide { from { left: -35%; } to { left: 100%; } }
+.remote-pair { display: flex; gap: 14px; align-items: center; margin: -2px 0 8px; padding: 12px; border-radius: 8px; background: var(--card); }
+.remote-pair .qr { flex: none; border-radius: 6px; }
+.remote-txt { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--dim); }
+.remote-url { font: 600 12px "Segoe UI", sans-serif; color: var(--text); word-break: break-all; }
 #tmouse { margin: 12px 0 6px; }
 #tmouse .card { margin-bottom: 0; }
 .wired.mouse-chip { color: var(--accent); }

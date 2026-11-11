@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f1f22">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>Xdeck Remote</title>
+<!-- Served by Xdeck.exe (Remote in src/Xdeck.cs) to a phone on the same network. The pairing key
+     arrives in the link's #k=..., is kept in localStorage, and opens the WebSocket at /ws?k=... -->
+<style>
+  :root {
+    --bg: #1f1f22; --card: #2c2c2f; --hot: #38383c; --off: #3a3a3e; --text: #f2f2f4; --dim: #a0a0a8;
+    --accent: #0a84ff; --green: #34c759; --red: #ff453a; --amber: #ffb340;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font: 15px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 16px 8px; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 650; flex: 1; }
+  .gear { width: 22px; height: 22px; color: var(--accent); }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+  .status.on .dot { background: var(--green); }
+  .status.bad .dot { background: var(--red); }
+  main { flex: 1; min-height: 0; position: relative; }
+  section { position: absolute; inset: 0; display: none; flex-direction: column; gap: 12px; padding: 4px 16px 12px; overflow-y: auto; }
+  section.on { display: flex; }
+  nav { display: flex; padding: 6px 8px calc(6px + var(--safe-b)); background: #18181a; border-top: 1px solid #2a2a2d; }
+  nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; border: 0; background: none;
+    color: var(--dim); font: 600 11px -apple-system, "Segoe UI", sans-serif; }
+  nav button svg { width: 24px; height: 24px; }
+  nav button.on { color: var(--accent); }
+  .pad { flex: 1; min-height: 220px; border-radius: 16px; background: var(--card); position: relative; touch-action: none;
+    display: grid; place-items: center; color: #55555c; font-size: 13px; text-align: center; padding: 20px; }
+  .pad.drag { box-shadow: inset 0 0 0 2px var(--accent); }
+  .row { display: flex; gap: 10px; }
+  .btn { flex: 1; min-height: 52px; border: 0; border-radius: 12px; background: var(--card); color: var(--text);
+    font: 600 15px -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; touch-action: manipulation; }
+  .btn:active, .btn.held { background: var(--hot); }
+  .btn svg { width: 24px; height: 24px; }
+  .btn.big { min-height: 72px; }
+  .btn.accent { background: var(--accent); color: #fff; }
+  .btn.small { min-height: 44px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .lbl { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); margin: 6px 2px -4px; }
+  textarea { width: 100%; min-height: 96px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); padding: 12px;
+    font: 16px -apple-system, "Segoe UI", sans-serif; resize: none; outline: none; user-select: text; -webkit-user-select: text; }
+  textarea:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+  .mods .btn.on { background: var(--accent); color: #fff; }
+  .outs { display: flex; flex-direction: column; gap: 8px; }
+  .out { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 14px; border-radius: 12px; background: var(--card); }
+  .out.on { box-shadow: inset 0 0 0 2px var(--accent); }
+  .out .nm { flex: 1; font-weight: 600; }
+  .out .ck { color: var(--accent); font-weight: 700; visibility: hidden; }
+  .out.on .ck { visibility: visible; }
+  .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); }
+  .vol input { flex: 1; accent-color: var(--accent); height: 32px; }
+  .vol .pct { width: 44px; text-align: right; color: var(--dim); font-weight: 600; font-size: 13px; }
+  .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
+  .vol svg { width: 24px; height: 24px; }
+  .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; }
+  .overlay { position: fixed; inset: 0; background: rgba(20,20,22,.94); display: none; place-items: center; text-align: center; padding: 30px; z-index: 5; }
+  .overlay.on { display: grid; }
+  .overlay h2 { margin: 0 0 8px; font-size: 19px; }
+  .overlay p { margin: 0; color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <svg class="gear" viewBox="0 0 32 32"><path fill="currentColor" fill-rule="evenodd" d="M13.3 2h5.4l.8 3.6 2.4 1 3.1-2 3.8 3.8-2 3.1 1 2.4 3.6.8v5.4l-3.6.8-1 2.4 2 3.1-3.8 3.8-3.1-2-2.4 1-.8 3.6h-5.4l-.8-3.6-2.4-1-3.1 2-3.8-3.8 2-3.1-1-2.4L2 18.7v-5.4l3.6-.8 1-2.4-2-3.1 3.8-3.8 3.1 2 2.4-1zM16 11.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4z"/></svg>
+  <h1>Xdeck</h1>
+  <span class="status" id="status"><span class="dot"></span><span id="statusText">Connecting…</span></span>
+</header>
+
+<main>
+  <section id="tab-mouse" class="on">
+    <div class="pad" id="pad">Touchpad<br>tap = click · two fingers = scroll<br>two-finger tap = right click · hold = drag</div>
+    <div class="row">
+      <button class="btn" id="lbtn">Left</button>
+      <button class="btn" id="mbtn" style="flex:.5">Middle</button>
+      <button class="btn" id="rbtn">Right</button>
+    </div>
+  </section>
+
+  <section id="tab-keys">
+    <textarea id="typing" placeholder="Type here: it goes to the PC as you type" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+    <div class="lbl">Hold with</div>
+    <div class="row mods">
+      <button class="btn small" data-mod="ctrl">Ctrl</button>
+      <button class="btn small" data-mod="alt">Alt</button>
+      <button class="btn small" data-mod="shift">Shift</button>
+      <button class="btn small" data-mod="win">Win</button>
+    </div>
+    <div class="lbl">Keys</div>
+    <div class="grid">
+      <button class="btn small" data-vk="27">Esc</button>
+      <button class="btn small" data-vk="9">Tab</button>
+      <button class="btn small" data-vk="8">⌫</button>
+      <button class="btn small" data-vk="13">Enter</button>
+      <button class="btn small" data-vk="36">Home</button>
+      <button class="btn small" data-vk="38">▲</button>
+      <button class="btn small" data-vk="35">End</button>
+      <button class="btn small" data-vk="46">Del</button>
+      <button class="btn small" data-vk="37">◀</button>
+      <button class="btn small" data-vk="40">▼</button>
+      <button class="btn small" data-vk="39">▶</button>
+      <button class="btn small" data-vk="32">Space</button>
+      <button class="btn small" data-vk="33">PgUp</button>
+      <button class="btn small" data-vk="34">PgDn</button>
+      <button class="btn small" data-vk="122">F11</button>
+      <button class="btn small" data-vk="91">Win</button>
+    </div>
+    <div class="lbl">Shortcuts</div>
+    <div class="grid3">
+      <button class="btn small" data-combo="alt+9">Alt+Tab</button>
+      <button class="btn small" data-combo="alt+115">Close app</button>
+      <button class="btn small" data-combo="win+68">Desktop</button>
+      <button class="btn small" data-combo="ctrl+67">Copy</button>
+      <button class="btn small" data-combo="ctrl+86">Paste</button>
+      <button class="btn small" data-combo="ctrl+90">Undo</button>
+    </div>
+  </section>
+
+  <section id="tab-media">
+    <div class="grid3" style="margin-top:6px">
+      <button class="btn big" data-vk="177" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5l-10 7 10 7z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      <button class="btn big accent" data-vk="179" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path d="M5 4l9 8-9 8zM15 5v14M19.5 5v14" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      <button class="btn big" data-vk="176" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      <button class="btn big" data-vk="174" aria-label="Volume down">Vol −</button>
+      <button class="btn big" data-vk="173" aria-label="Mute">Mute</button>
+      <button class="btn big" data-vk="175" aria-label="Volume up">Vol +</button>
+    </div>
+    <div class="row">
+      <button class="btn" data-vk="178">Stop</button>
+      <button class="btn" data-combo="alt+13">Fullscreen (Alt+Enter)</button>
+    </div>
+    <div class="row">
+      <button class="btn" data-vk="70">F (video fullscreen)</button>
+      <button class="btn" data-vk="32">Space</button>
+    </div>
+  </section>
+
+  <section id="tab-audio">
+    <div class="lbl">Volume</div>
+    <div class="vol">
+      <button id="muteBtn" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor"/><path id="muteWaves" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <input type="range" id="vol" min="0" max="100" step="1">
+      <span class="pct" id="volPct">–</span>
+    </div>
+    <div class="lbl">Audio output</div>
+    <div class="outs" id="outs"></div>
+  </section>
+
+  <section id="tab-obs">
+    <div class="grid3" style="grid-template-columns:repeat(2,1fr);margin-top:6px">
+      <button class="btn big" data-obs="record">● Record</button>
+      <button class="btn big" data-obs="pause">❚❚ Pause</button>
+      <button class="btn big" data-obs="stream">Stream</button>
+      <button class="btn big" data-obs="replay">Save replay</button>
+      <button class="btn big" data-obs="scene.previous">◀ Scene</button>
+      <button class="btn big" data-obs="scene.next">Scene ▶</button>
+      <button class="btn big" data-obs="virtualcam">Virtual camera</button>
+    </div>
+    <p class="note">Each button starts or stops it. OBS needs its WebSocket server on (Tools › WebSocket Server Settings); the PC shows what OBS did.</p>
+  </section>
+</main>
+
+<nav id="tabs">
+  <button data-tab="mouse" class="on"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Mouse</button>
+  <button data-tab="keys"><svg viewBox="0 0 24 24"><rect x="1.8" y="6" width="20.4" height="12.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 9.6h1.2M9.2 9.6h1.2M13 9.6h1.2M16.8 9.6h1.2M5.5 12.4h1.2M9.2 12.4h1.2M13 12.4h1.2M16.8 12.4h1.2M8 15.2h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>Keyboard</button>
+  <button data-tab="media"><svg viewBox="0 0 24 24"><path d="M5 4l9 8-9 8zM16 5v14M20 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Media</button>
+  <button data-tab="audio"><svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Audio</button>
+  <button data-tab="obs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>OBS</button>
+</nav>
+
+<div class="overlay" id="unpaired">
+  <div><h2>Not paired</h2><p>Open the Xdeck panel on the PC, turn on <b>Phone remote</b> and scan its QR code with this phone.</p></div>
+</div>
+
+<script>
+"use strict";
+// ------------------------------------------------------------ pairing + connection
+const KEY = "xdeck-remote-key";
+let key = null;
+try {
+  const m = /[#&]k=([\w-]+)/.exec(location.hash);
+  if (m) { localStorage.setItem(KEY, m[1]); history.replaceState(null, "", location.pathname); }
+  key = localStorage.getItem(KEY);
+} catch (e) {
+  const m = /[#&]k=([\w-]+)/.exec(location.hash);
+  key = m ? m[1] : null;
+}
+
+const $status = document.getElementById("status"), $statusText = document.getElementById("statusText");
+let ws = null, retry = 600, pcName = "";
+function setStatus(cls, text) { $status.className = "status " + cls; $statusText.textContent = text; }
+
+function connect() {
+  if (!key) { document.getElementById("unpaired").classList.add("on"); setStatus("bad", "Not paired"); return; }
+  setStatus("", "Connecting…");
+  ws = new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(key)}`);
+  let opened = false;
+  ws.onopen = () => { opened = true; retry = 600; setStatus("on", pcName || "Connected"); };
+  ws.onmessage = (e) => { try { onState(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose = async () => {
+    ws = null;
+    setStatus("", "Reconnecting…");
+    // refused before opening: an old key (a new pairing link was made on the PC), or the PC is away
+    if (!opened) {
+      try {
+        const r = await fetch(`/check?k=${encodeURIComponent(key)}`, { cache: "no-store" });
+        if (r.status === 403) { document.getElementById("unpaired").classList.add("on"); setStatus("bad", "Not paired"); return; }
+      } catch (_) { setStatus("bad", "PC not reachable"); }
+    }
+    setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 5000);
+  };
+}
+function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (!ws) connect(); else send({ t: "state" }); } });
+
+// ------------------------------------------------------------ tabs
+document.getElementById("tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", s.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "audio") send({ t: "state" });
+});
+
+// ------------------------------------------------------------ touchpad
+// One finger moves (faster swipes go further), a tap clicks, two fingers scroll, a two-finger
+// tap right-clicks, and holding still for half a second grabs (left button down) until release.
+const pad = document.getElementById("pad");
+const touches = new Map();
+let moved = 0, startAt = 0, maxFingers = 0, holdTimer = 0, dragging = false, acc = { x: 0, y: 0 }, scrollAcc = 0, hscrollAcc = 0, frame = 0;
+const SPEED = 1.6, NOTCH = 22;
+
+function flush() {
+  frame = 0;
+  const dx = Math.round(acc.x), dy = Math.round(acc.y);
+  if (dx || dy) { send({ t: "move", dx, dy }); acc.x -= dx; acc.y -= dy; }
+}
+
+pad.addEventListener("pointerdown", (e) => {
+  pad.setPointerCapture(e.pointerId);
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
+  if (touches.size === 1) {
+    moved = 0; startAt = e.timeStamp; maxFingers = 1; scrollAcc = 0; hscrollAcc = 0;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      if (touches.size === 1 && moved < 8) { dragging = true; pad.classList.add("drag"); send({ t: "click", b: 0, down: true }); navigator.vibrate && navigator.vibrate(15); }
+    }, 500);
+  }
+  maxFingers = Math.max(maxFingers, touches.size);
+});
+
+pad.addEventListener("pointermove", (e) => {
+  const p = touches.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y, dt = Math.max(1, e.timeStamp - p.t);
+  p.x = e.clientX; p.y = e.clientY; p.t = e.timeStamp;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (touches.size >= 2) {
+    // two fingers: each finger reports half of the gesture
+    scrollAcc += dy / touches.size; hscrollAcc += dx / touches.size;
+    const n = Math.trunc(scrollAcc / NOTCH), hn = Math.trunc(hscrollAcc / NOTCH);
+    if (n) { send({ t: "scroll", v: n * 120 }); scrollAcc -= n * NOTCH; }
+    if (hn) { send({ t: "scroll", h: -hn * 120 }); hscrollAcc -= hn * NOTCH; }
+    return;
+  }
+  const v = Math.hypot(dx, dy) / dt;                 // px per ms
+  const gain = SPEED * (1 + Math.min(2.5, v * 1.4));  // acceleration
+  acc.x += dx * gain; acc.y += dy * gain;
+  if (!frame) frame = requestAnimationFrame(flush);
+});
+
+function lift(e) {
+  if (!touches.has(e.pointerId)) return;
+  touches.delete(e.pointerId);
+  if (touches.size > 0) return;
+  clearTimeout(holdTimer);
+  const quick = e.timeStamp - startAt < 250 && moved < 10;
+  if (dragging) { dragging = false; pad.classList.remove("drag"); send({ t: "click", b: 0, down: false }); }
+  else if (quick) send({ t: "click", b: maxFingers >= 2 ? 1 : 0 });
+}
+pad.addEventListener("pointerup", lift);
+pad.addEventListener("pointercancel", lift);
+
+// buttons: held as long as the finger stays (drag with the other hand)
+function holdButton(id, b) {
+  const el = document.getElementById(id);
+  el.addEventListener("pointerdown", (e) => { e.preventDefault(); el.classList.add("held"); send({ t: "click", b, down: true }); });
+  const up = () => { if (el.classList.contains("held")) { el.classList.remove("held"); send({ t: "click", b, down: false }); } };
+  el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("pointerleave", up);
+}
+holdButton("lbtn", 0); holdButton("mbtn", 2); holdButton("rbtn", 1);
+
+// ------------------------------------------------------------ keyboard
+// What changes in the box goes to the PC: new characters as text, removed ones as Backspace
+// (autocorrect replacing a word works the same way).
+const typing = document.getElementById("typing");
+let last = "";
+typing.addEventListener("input", () => {
+  const now = typing.value;
+  let i = 0;
+  while (i < last.length && i < now.length && last[i] === now[i]) i++;
+  for (let k = 0; k < last.length - i; k++) sendKey(8);
+  const added = now.slice(i);
+  if (added) send({ t: "text", text: added });
+  last = now;
+  if (now.length > 200) { typing.value = ""; last = ""; }
+});
+typing.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendKey(13); typing.value = ""; last = ""; }
+});
+
+const mods = new Set();
+document.querySelectorAll("[data-mod]").forEach((b) => b.addEventListener("click", () => {
+  const m = b.dataset.mod;
+  if (mods.has(m)) mods.delete(m); else mods.add(m);
+  b.classList.toggle("on", mods.has(m));
+}));
+function sendKey(vk, extra) {
+  const all = new Set([...(extra || []), ...mods]);
+  send({ t: "key", vk, mods: [...all] });
+}
+function clearMods() { mods.clear(); document.querySelectorAll("[data-mod]").forEach((b) => b.classList.remove("on")); }
+
+document.querySelectorAll("[data-vk]").forEach((b) => b.addEventListener("click", () => {
+  sendKey(+b.dataset.vk);
+  if (b.closest("#tab-keys")) clearMods();
+  navigator.vibrate && navigator.vibrate(8);
+}));
+document.querySelectorAll("[data-combo]").forEach((b) => b.addEventListener("click", () => {
+  const parts = b.dataset.combo.split("+");
+  send({ t: "key", vk: +parts.pop(), mods: parts });
+  navigator.vibrate && navigator.vibrate(8);
+}));
+
+// ------------------------------------------------------------ audio
+const $outs = document.getElementById("outs"), $vol = document.getElementById("vol"), $volPct = document.getElementById("volPct");
+let sliding = false, volTimer = 0;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function onState(m) {
+  if (m.t !== "state") return;
+  if (m.pc) { pcName = m.pc; setStatus("on", pcName); }
+  $outs.innerHTML = (m.outs || []).map((o) =>
+    `<div class="out${o.id === m.def ? " on" : ""}" data-id="${esc(o.id)}"><span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
+    `<p class="note">No audio output connected</p>`;
+  if (!sliding) { $vol.value = Math.round((m.vol || 0) * 100); $volPct.textContent = m.mute ? "Muted" : $vol.value + "%"; }
+  document.getElementById("muteWaves").style.opacity = m.mute ? .25 : 1;
+}
+$outs.addEventListener("click", (e) => {
+  const o = e.target.closest(".out");
+  if (!o) return;
+  document.querySelectorAll(".out").forEach((x) => x.classList.toggle("on", x === o));
+  send({ t: "out", id: o.dataset.id });
+});
+$vol.addEventListener("input", () => {
+  sliding = true;
+  $volPct.textContent = $vol.value + "%";
+  clearTimeout(volTimer);
+  volTimer = setTimeout(() => send({ t: "vol", v: $vol.value / 100 }), 40);
+});
+$vol.addEventListener("change", () => { sliding = false; send({ t: "vol", v: $vol.value / 100 }); });
+document.getElementById("muteBtn").addEventListener("click", () => send({ t: "mute" }));
+
+// ------------------------------------------------------------ OBS
+document.querySelectorAll("[data-obs]").forEach((b) => b.addEventListener("click", () => {
+  send({ t: "obs", a: b.dataset.obs });
+  navigator.vibrate && navigator.vibrate(12);
+}));
+
+connect();
+</script>
+</body>
+</html>
