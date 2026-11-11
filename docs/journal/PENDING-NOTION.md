@@ -271,7 +271,7 @@ Target: Projects / Xdeck / Journal; data source unresolved.
 - Date: 2026-11-11
 - Type: Fix
 - Area: UI
-- Status: Partial (desktop applied locally; PWA publication verification pending)
+- Status: Done (desktop applied locally and PWA production assets verified)
 - Summary: Apply the approved compact shared branding, desktop Settings code generation and
   separate phone pairing-code screen with Back and adjacent Pair action.
 - Agent: Codex
@@ -329,6 +329,24 @@ The installed phone page must be reopened to load the new document; pairings do 
 
 ## Next
 
-Publish the PWA under the existing production authorization, verify static asset hashes and relay
-read-only responses, then record the deployment result here. Sync this entry when an Xdeck Notion
-journal destination is available.
+Sync this entry when an Xdeck Notion journal destination is available. Publish the official Windows
+installer after the existing original signing key becomes available.
+
+### Verified delivery
+
+Commit 26f256f was merged through dev into main and pushed. Cloudflare deployment
+94e2520a-0593-45a8-a636-925312729edc serves xdeck.skale.club. Its rollback target is
+7833c0c5-3e0d-4155-989e-225cb117d471. At 16:07 America/New_York, GETs for /, /sw.js, the bundled
+font and its OFL license returned 200 and SHA-256 hashes identical to source. Read-only relay checks
+passed (GET /pair and /discover: 405; /pc and /phone without IDs: 400). No webhook, native-host,
+relay or migration changes were made. The existing webhook-security review still applies.
+
+The Surface's installed desktop JavaScript, CSS, icon and font hashes match source; Xdeck is running
+and responding. During this work the owner asked to close Claude and Thunderbird; their windows
+were closed and remaining application background processes were stopped. Zero Claude/Thunderbird
+processes remained in the final check. No additional browser capture was started.
+
+Estimated duration: 20 minutes; actual approximately 22 minutes including the requested application
+shutdowns and memory-constrained tool execution. All 16 focused tests passed. The owner can reopen
+the PWA to load the new screen and use desktop Settings > Generate access code without reinstalling
+the app or clearing existing paired PCs.
