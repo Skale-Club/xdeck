@@ -1,8 +1,8 @@
 # Xdeck
 
 Your audio and your controllers, from the tray. Switch the audio output and the microphone, set
-their volume, see the battery of each controller, and test controllers, wheels and handbrakes —
-from the panel, a hotkey, or the controller in your hands.
+their volume, see the battery of each controller, test controllers, wheels and handbrakes, and drive
+OBS Studio — from the panel, a hotkey, or the controller in your hands.
 
 🇧🇷 [Português](#português)
 
@@ -50,6 +50,10 @@ Xdeck lives in the system tray as a gear:
 | **Audio output** | See the active output and its live level. Click it to list the others and pick one. Volume slider (drag or scroll), mute. |
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
 | **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. |
+
+When a controller connects, a banner at the top left of the screen names it with its battery (the
+pills and the percent, *charging*, or `USB`). When a wireless controller drops to 15%, a banner warns
+once (and again only after it has charged).
 
 The controller test shows the real controller: Xbox, DualSense, Pro Controller and Joy-Cons light up
 button by button; the G29 shows the wheel angle and pedals; the handbrake shows the lever.
@@ -100,6 +104,28 @@ While the panel is open the controller drives the panel instead. The pointer spe
 `mouse.speed` in `shortcuts.ini`. Windows does not let Xdeck click in windows that run as
 administrator.
 
+## OBS Studio from the controller
+
+Start and stop recording or streaming, pause, save a replay, and switch scenes in OBS Studio (28 or
+later) from the controller, while you play. A banner says what OBS did.
+
+1. In OBS: **Tools › WebSocket Server Settings › Enable WebSocket server**.
+2. If **Enable Authentication** is on there, click **Show Connect Info**, copy the password, and paste
+   it after `obs.password =` in `shortcuts.ini` (tray menu › **Edit shortcuts…**).
+
+| Controller (default) | OBS |
+|---|---|
+| R1 + D-pad right + ✕ (RB + right + A) | Start / stop recording |
+| R1 + D-pad right + ▢ (RB + right + X) | Pause / resume the recording |
+| R1 + D-pad right + △ (RB + right + Y) | Start / stop streaming |
+| R1 + D-pad right + ◯ (RB + right + B) | Save the replay buffer |
+| R1 + R3 / R1 + L3 | Next / previous scene (in the order of OBS's Scenes list) |
+
+More in `shortcuts.ini`: `obs.virtualcam` (virtual camera), `obs.scene.<scene name>` (go to that
+scene), `obs.mute.<audio source name>` (mute / unmute it) and `obs.hotkey.<OBS hotkey name>` (one of
+OBS's own hotkeys, e.g. `OBSBasic.Screenshot`). Xdeck connects only when an OBS shortcut is pressed.
+OBS on another PC: set `obs.address` to its IP and port.
+
 ## Switch the audio output without the panel
 
 - `Ctrl+Alt+F11` / `Ctrl+Alt+F10`: next / previous output.
@@ -122,6 +148,17 @@ audio.next = Ctrl+Alt+F11
 audio.previous = Ctrl+Alt+F10
 mouse = L1 + Right + Square        # controller as mouse on / off
 mouse.speed = 1400                 # pointer pixels per second at full tilt (200 to 6000)
+
+obs.address = 127.0.0.1:4455       # OBS's WebSocket server
+obs.password =                     # its password, if it asks for one
+obs.record = R1 + Right + Cross    # start / stop recording
+obs.pause = R1 + Right + Square    # pause / resume the recording
+obs.stream = R1 + Right + Triangle # start / stop streaming
+obs.replay = R1 + Right + Circle   # save the replay buffer
+obs.scene.next = R1 + R3           # next / previous scene
+obs.scene.previous = R1 + L3
+obs.scene.Gameplay = R1 + Up       # that scene (any scene name after obs.scene.)
+obs.mute.Mic/Aux = R1 + Down       # mute / unmute that audio source
 ```
 
 - Controller: `+` = held together, `,` = one after another (at most 1.5 s apart), e.g.
@@ -166,6 +203,9 @@ pelo próprio controle.
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).
+- **Controle conectado:** ao ligar um controle, um aviso no canto da tela mostra o nome e a bateria
+  (as barrinhas e a porcentagem, *charging* ou `USB`). Quando um controle sem fio chega a 15%, um
+  aviso aparece uma vez (e de novo só depois de carregar).
 - **Testar um controle:** clique no cartão dele no painel.
 - **Painel pelo controle:** segure **L1 + direcional direita** e aperte **triângulo** (Xbox: LB +
   direita + Y). A mesma combinação esconde o painel e devolve o foco ao jogo. Com o painel aberto, tudo funciona pelo controle: direcional ou analógico esquerdo
@@ -177,6 +217,13 @@ pelo próprio controle.
   esquerdo move o cursor (segure L2 / LT para ir devagar), analógico direito rola, **✕/A** clica (segure
   para arrastar), **◯/B** é o botão direito, **▢/X** o do meio, direcional = setas, Options = Enter,
   Share = Esc. Com o painel aberto, o controle volta a mexer no painel.
+- **OBS Studio pelo controle:** no OBS, **Ferramentas › Configurações do servidor WebSocket ›
+  Ativar servidor WebSocket**; se ali pedir senha, copie em **Mostrar informações de conexão** e cole
+  em `obs.password =` no `shortcuts.ini`. Atalhos padrão: **R1 + direcional direita + ✕** grava/para,
+  **+ ▢** pausa, **+ △** transmite, **+ ◯** salva o replay; **R1 + R3 / R1 + L3** próxima / cena
+  anterior. Também dá para ir a uma cena (`obs.scene.Nome = …`), mutar uma fonte de áudio
+  (`obs.mute.Mic/Aux = …`), ligar a câmera virtual (`obs.virtualcam`) ou apertar um atalho do próprio
+  OBS (`obs.hotkey.…`). Um aviso na tela diz o que o OBS fez.
 - **Trocar os atalhos:** menu do tray › **Edit shortcuts…** abre o `shortcuts.ini`. Salve e o Xdeck
   já usa os novos atalhos, sem reiniciar e sem compilar de novo. `+` = segurar junto, `,` = um depois
   do outro (ex.: `panel = L1, Right, L1, Triangle`).

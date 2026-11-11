@@ -5,6 +5,8 @@
 //  - Ctrl+Alt+F11 / Ctrl+Alt+F10, or hold D-pad right + L1 and flick the right stick, switch the
 //    playback device forward / back; Data\devices.txt optionally sets the order.
 //  - L1 + D-pad right + Triangle opens / hides the panel, which the controller then drives.
+//  - A banner shows each controller that connects, with its battery, and warns when one runs low.
+//  - obs.* controller shortcuts drive OBS Studio (record, stream, scenes, ...) over its WebSocket.
 //  - Every shortcut above can be changed in shortcuts.ini (read again on save, no new build).
 // Build with ..\build.ps1 (C# 5 / .NET Framework 4.8: no string interpolation, no ?. operator).
 using System;
@@ -17,12 +19,14 @@ using System.Drawing.Text;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
+using System.Net.WebSockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
@@ -78,7 +82,7 @@ audio = L1 + Right
 # next / previous audio output from the keyboard
 audio.next = Ctrl+Alt+F11
 audio.previous = Ctrl+Alt+F10
-" + MouseSection;
+" + MouseSection + ObsSection;
 
     // Added to a file written by an older Xdeck that has no mouse lines yet.
     const string MouseSection =
@@ -92,6 +96,31 @@ mouse = L1 + Right + Square
 mouse.speed = 1400
 ";
 
+    // Added to a file written by an older Xdeck that has no OBS lines yet.
+    const string ObsSection =
+@"
+# OBS Studio from the controller / OBS Studio pelo controle.
+# In OBS: Tools > WebSocket Server Settings > Enable WebSocket server. If it shows a password there
+# (Show Connect Info), copy it to obs.password. Xdeck connects when you first press an OBS shortcut,
+# and a banner says what OBS did.
+#   obs.record       start / stop recording            obs.pause       pause / resume the recording
+#   obs.stream       start / stop streaming            obs.replay      save the replay buffer
+#   obs.virtualcam   start / stop the virtual camera
+#   obs.scene.next / obs.scene.previous                the next / previous scene of OBS's list
+#   obs.scene.<scene name>                             go to that scene,           e.g. obs.scene.Gameplay = R1 + Up
+#   obs.mute.<audio source name>                       mute / unmute that source,  e.g. obs.mute.Mic/Aux = R1 + Down
+#   obs.hotkey.<OBS hotkey name>                       press one of OBS's own hotkeys, e.g. obs.hotkey.OBSBasic.Screenshot = R1 + Share
+obs.address = 127.0.0.1:4455
+obs.password =
+
+obs.record = R1 + Right + Cross
+obs.pause = R1 + Right + Square
+obs.stream = R1 + Right + Triangle
+obs.replay = R1 + Right + Circle
+obs.scene.next = R1 + R3
+obs.scene.previous = R1 + L3
+";
+
     public static void EnsureExists()
     {
         try
@@ -99,8 +128,10 @@ mouse.speed = 1400
             string path = AppPaths.ShortcutFile;
             if (!File.Exists(path)) { File.WriteAllText(path, Template, new UTF8Encoding(false)); return; }
             string text = File.ReadAllText(path, Encoding.UTF8);
-            if (!Regex.IsMatch(text, @"^\s*mouse\s*=", RegexOptions.Multiline))
-                File.AppendAllText(path, (text.EndsWith("\n") ? "" : "\r\n") + MouseSection, new UTF8Encoding(false));
+            string add = "";
+            if (!Regex.IsMatch(text, @"^\s*mouse\s*=", RegexOptions.Multiline)) add += MouseSection;
+            if (!Regex.IsMatch(text, @"^\s*obs\.", RegexOptions.Multiline | RegexOptions.IgnoreCase)) add += ObsSection;
+            if (add.Length > 0) File.AppendAllText(path, (text.EndsWith("\n") ? "" : "\r\n") + add, new UTF8Encoding(false));
         }
         catch { }
     }
@@ -118,6 +149,8 @@ mouse.speed = 1400
         int[] mouse = Shortcuts.Mouse;
         string mouseText = Shortcuts.MouseText;
         int mouseSpeed = Shortcuts.MouseSpeed;
+        List<ObsBinding> obs = new List<ObsBinding>();
+        string obsAddress = Obs.Address, obsPassword = Obs.Password;
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i].Trim();
@@ -125,7 +158,8 @@ mouse.speed = 1400
             string where = "line " + (i + 1) + ": ";
             int eq = line.IndexOf('=');
             if (eq < 0) { errors.Add(where + "no \"=\""); continue; }
-            string key = line.Substring(0, eq).Trim().ToLowerInvariant(), value = line.Substring(eq + 1).Trim();
+            string rawKey = line.Substring(0, eq).Trim(), value = line.Substring(eq + 1).Trim();
+            string key = rawKey.ToLowerInvariant();
             string err;
             uint mods, vk;
             if (key == "mouse.speed")
@@ -148,9 +182,30 @@ mouse.speed = 1400
                 if (!Shortcuts.ParseKey(value, out mods, out vk, out err)) { errors.Add(where + err); continue; }
                 if (key == "audio.next") NextKey = value; else PrevKey = value;
             }
+            else if (key == "obs.address")
+            {
+                if (value.Length == 0 || value.Contains(" ")) { errors.Add(where + "obs.address takes host:port, e.g. 127.0.0.1:4455"); continue; }
+                obsAddress = value;
+            }
+            else if (key == "obs.password") obsPassword = value;
+            else if (key.StartsWith("obs."))
+            {
+                ObsBinding b = ObsBinding.FromKey(rawKey, out err);
+                if (b != null) b.Steps = Shortcuts.ParsePad(value, out err);
+                if (b == null || b.Steps == null)
+                {
+                    errors.Add(where + err);
+                    foreach (ObsBinding old in Shortcuts.Obs) if (old.Key == key) { obs.Add(old); break; }   // keeps the one in use
+                    continue;
+                }
+                obs.RemoveAll(delegate (ObsBinding o) { return o.Key == key; });
+                if (b.Steps.Length > 0) obs.Add(b);
+            }
             else errors.Add(where + "unknown setting \"" + key + "\"");
         }
-        Shortcuts.SetPad(panel, panelText, audio, mouse, mouseText, mouseSpeed);
+        Shortcuts.SetPad(panel, panelText, audio, mouse, mouseText, mouseSpeed, obs.ToArray());
+        Obs.Address = obsAddress;
+        Obs.Password = obsPassword;
         return errors;
     }
 }
@@ -1212,16 +1267,19 @@ static class Shortcuts
     public static volatile int[] Mouse = { (1 << PadState.LB) | (1 << PadState.Right) | (1 << PadState.West) };
     public static volatile string MouseText = "L1 + Right + Square";
     public static volatile int MouseSpeed = 1400;   // pointer pixels per second with the stick all the way
+    public static volatile ObsBinding[] Obs = new ObsBinding[0];   // the obs.* lines (OBS Studio)
     // The buttons of these shortcuts that the panel does not use (L1 by default). While one is held
     // the controller is doing a shortcut, so the panel and the mouse mode ignore its D-pad and face
     // buttons.
     public static volatile int Guard = 1 << PadState.LB;
 
-    public static void SetPad(int[] panel, string panelText, int audio, int[] mouse, string mouseText, int mouseSpeed)
+    public static void SetPad(int[] panel, string panelText, int audio, int[] mouse, string mouseText, int mouseSpeed, ObsBinding[] obs)
     {
         int all = audio;
         foreach (int m in panel) all |= m;
         foreach (int m in mouse) all |= m;
+        foreach (ObsBinding b in obs) foreach (int m in b.Steps) all |= m;
+        Obs = obs;
         Panel = panel;
         PanelText = panelText;
         Audio = audio;
@@ -1486,6 +1544,7 @@ class PadMouse
 //  - the audio combo (above);
 //  - the panel shortcut (L1 + D-pad right + Triangle by default) to open or hide the panel;
 //  - the mouse shortcut (L1 + D-pad right + Square by default) and the mouse mode itself;
+//  - the OBS shortcuts (obs.* in shortcuts.ini), handed to the OBS worker;
 //  - panel navigation while the panel is open: D-pad / left stick, A, B, X, Menu, and holding B.
 class PadHooks
 {
@@ -1499,6 +1558,8 @@ class PadHooks
     readonly Combo combo = new Combo();
     readonly ShortcutTracker panelKey = new ShortcutTracker(), mouseKey = new ShortcutTracker();
     readonly PadMouse mouse = new PadMouse();
+    ObsBinding[] obsFor = new ObsBinding[0];          // the bindings obsKeys follow (one tracker each)
+    ShortcutTracker[] obsKeys = new ShortcutTracker[0];
     int prev;
     // Navigation that happens mid-sequence is held back, so a D-pad step of the sequence does not move
     // the focus or the volume; it is dropped if the sequence completes, sent if it breaks.
@@ -1508,7 +1569,15 @@ class PadHooks
     DateTime bSince;
     bool bFired;
 
-    bool InSequence { get { return panelKey.Step > 0 || mouseKey.Step > 0; } }
+    bool InSequence
+    {
+        get
+        {
+            if (panelKey.Step > 0 || mouseKey.Step > 0) return true;
+            foreach (ShortcutTracker t in obsKeys) if (t.Step > 0) return true;
+            return false;
+        }
+    }
 
     public void Update(PadState s)
     {
@@ -1517,7 +1586,7 @@ class PadHooks
         int pressed = bits & ~before;      // rising edges
         prev = bits;
 
-        if (combo.Update(s)) { panelKey.Step = mouseKey.Step = 0; held.Clear(); }
+        if (combo.Update(s)) { panelKey.Step = mouseKey.Step = 0; foreach (ShortcutTracker t in obsKeys) t.Step = 0; held.Clear(); }
 
         // -------- shortcuts
         if (panelKey.Update(Shortcuts.Panel, bits, before, pressed, now))
@@ -1527,6 +1596,15 @@ class PadHooks
             if (t != null) t();
         }
         if (mouseKey.Update(Shortcuts.Mouse, bits, before, pressed, now)) { held.Clear(); MouseMode.Toggle(s); }
+        ObsBinding[] obs = Shortcuts.Obs;
+        if (obs != obsFor)
+        {
+            obsFor = obs;
+            obsKeys = new ShortcutTracker[obs.Length];
+            for (int i = 0; i < obs.Length; i++) obsKeys[i] = new ShortcutTracker();
+        }
+        for (int i = 0; i < obs.Length; i++)
+            if (obsKeys[i].Update(obs[i].Steps, bits, before, pressed, now)) { held.Clear(); Obs.Run(obs[i]); }
         if (!InSequence) Flush();          // a sequence broke or timed out: what it held back goes out
 
         mouse.Update(s, bits, pressed, !NavActive && MouseMode.IsOn(s), Shortcuts.Guard, now);
@@ -1651,6 +1729,331 @@ static class XInputPoller
             }
             Thread.Sleep(any ? 8 : 30);
         }
+    }
+}
+
+// ---------------------------------------------------------------- OBS Studio
+// The obs.* controller shortcuts drive OBS Studio through its WebSocket server (obs-websocket 5,
+// built into OBS 28 and later: Tools > WebSocket Server Settings). Nothing connects until an OBS
+// shortcut is pressed; then one worker thread opens the connection, keeps it for the next press and
+// sends the requests in turn. The banner says what OBS did, or why it did not.
+class ObsBinding
+{
+    public string Key;      // the shortcuts.ini key in lower case: obs.record, obs.scene.gameplay, ...
+    public string Action;   // record pause stream replay virtualcam scene.next scene.previous scene mute hotkey
+    public string Target;   // the scene, audio source or OBS hotkey name, as written
+    public int[] Steps;     // the controller shortcut
+
+    static readonly string[] Simple = { "record", "pause", "stream", "replay", "virtualcam", "scene.next", "scene.previous" };
+    static readonly string[] Named = { "scene", "mute", "hotkey" };
+
+    // null + error when the key is no OBS action
+    public static ObsBinding FromKey(string rawKey, out string error)
+    {
+        error = null;
+        string key = rawKey.ToLowerInvariant(), rest = rawKey.Substring(4).Trim();   // after "obs."
+        foreach (string a in Simple)
+            if (key == "obs." + a) return new ObsBinding { Key = key, Action = a };
+        foreach (string a in Named)
+            if (key.StartsWith("obs." + a + "."))
+            {
+                string name = rest.Substring(a.Length + 1).Trim();
+                if (name.Length > 0) return new ObsBinding { Key = key, Action = a, Target = name };
+                error = "the " + a + " name is missing after \"obs." + a + ".\"";
+                return null;
+            }
+        error = "unknown OBS setting \"" + key + "\"";
+        return null;
+    }
+}
+
+class ObsError : Exception
+{
+    public readonly int Code;   // obs-websocket request status code; 0 when OBS did not get that far
+    public ObsError(string message, int code) : base(message) { Code = code; }
+}
+
+static class Obs
+{
+    public static volatile string Address = "127.0.0.1:4455", Password = "";
+    public static Action<string, string, string, int, int> Said;   // caption, text, icon, index, count (worker thread)
+
+    const int NotFound = 600;     // obs-websocket: ResourceNotFound
+    static readonly Queue<ObsBinding> queue = new Queue<ObsBinding>();
+    static readonly JavaScriptSerializer json = new JavaScriptSerializer();
+    static Thread worker;
+    static ClientWebSocket ws;
+    static string wsFor;          // address + password the open connection was made with
+    static int lastId;
+
+    // From a controller thread: queued for the worker (a few at most, so a held combo cannot pile up).
+    public static void Run(ObsBinding b)
+    {
+        lock (queue)
+        {
+            if (queue.Count >= 4) return;
+            queue.Enqueue(b);
+            Monitor.Pulse(queue);
+            if (worker != null) return;
+            worker = new Thread(Work);
+            worker.IsBackground = true;
+            worker.Start();
+        }
+    }
+
+    static void Work()
+    {
+        while (true)
+        {
+            ObsBinding b;
+            lock (queue)
+            {
+                while (queue.Count == 0) Monitor.Wait(queue);
+                b = queue.Dequeue();
+            }
+            try { Do(b); }
+            catch (ObsError e) { Say("OBS", e.Message, "rec"); }
+            catch (Exception e) { Close(); Say("OBS", "Error: " + e.Message, "rec"); }
+        }
+    }
+
+    static void Say(string caption, string text, string icon) { Say(caption, text, icon, 0, 0); }
+    static void Say(string caption, string text, string icon, int index, int count)
+    {
+        Action<string, string, string, int, int> s = Said;
+        if (s != null) s(caption, text, icon, index, count);
+    }
+
+    static void Do(ObsBinding b)
+    {
+        Dictionary<string, object> r;
+        switch (b.Action)
+        {
+            case "record":
+                if (Bool(Call("GetRecordStatus", null), "outputActive")) { Call("StopRecord", null); Say("OBS", "Recording stopped", "rec"); }
+                else { Call("StartRecord", null); Say("OBS", "Recording started", "rec"); }
+                break;
+            case "pause":
+                r = Call("GetRecordStatus", null);
+                if (!Bool(r, "outputActive")) Say("OBS", "Not recording", "rec");
+                else if (Bool(r, "outputPaused")) { Call("ResumeRecord", null); Say("OBS", "Recording resumed", "rec"); }
+                else { Call("PauseRecord", null); Say("OBS", "Recording paused", "rec"); }
+                break;
+            case "stream":
+                if (Bool(Call("GetStreamStatus", null), "outputActive")) { Call("StopStream", null); Say("OBS", "Stream stopped", "live"); }
+                else { Call("StartStream", null); Say("OBS", "Stream started", "live"); }
+                break;
+            case "replay":
+                if (!Active("GetReplayBufferStatus")) { Say("OBS", "Replay buffer is off", "rec"); break; }
+                Call("SaveReplayBuffer", null);
+                Say("OBS", "Replay saved", "rec");
+                break;
+            case "virtualcam":
+                if (Active("GetVirtualCamStatus")) { Call("StopVirtualCam", null); Say("OBS", "Virtual camera off", "monitor"); }
+                else { Call("StartVirtualCam", null); Say("OBS", "Virtual camera on", "monitor"); }
+                break;
+            case "scene.next":
+            case "scene.previous":
+            {
+                r = Call("GetSceneList", null);
+                List<string> names = Scenes(r);
+                if (names.Count == 0) { Say("OBS", "No scenes", "monitor"); break; }
+                int at = names.IndexOf(Str(r, "currentProgramSceneName"));
+                int dir = b.Action == "scene.next" ? 1 : -1;
+                int n = at < 0 ? 0 : ((at + dir) % names.Count + names.Count) % names.Count;
+                Call("SetCurrentProgramScene", Args("sceneName", names[n]));
+                Say("OBS scene", names[n], "monitor", n, names.Count);
+                break;
+            }
+            case "scene":
+                try { Call("SetCurrentProgramScene", Args("sceneName", b.Target)); }
+                catch (ObsError e) { if (e.Code == NotFound) throw new ObsError("No scene named " + b.Target, e.Code); throw; }
+                Say("OBS scene", b.Target, "monitor");
+                break;
+            case "mute":
+                try { r = Call("ToggleInputMute", Args("inputName", b.Target)); }
+                catch (ObsError e) { if (e.Code == NotFound) throw new ObsError("No source named " + b.Target, e.Code); throw; }
+                Say("OBS", b.Target + (Bool(r, "inputMuted") ? ": muted" : ": on"), "mic");
+                break;
+            case "hotkey":
+                try { Call("TriggerHotkeyByName", Args("hotkeyName", b.Target)); }
+                catch (ObsError e) { if (e.Code == NotFound) throw new ObsError("No OBS hotkey named " + b.Target, e.Code); throw; }
+                Say("OBS hotkey", b.Target, "rec");
+                break;
+        }
+    }
+
+    // An output's status; an output OBS does not have set up (replay buffer, virtual camera) counts as off.
+    static bool Active(string statusRequest)
+    {
+        try { return Bool(Call(statusRequest, null), "outputActive"); }
+        catch (ObsError e) { if (e.Code == 0) throw; return false; }
+    }
+
+    // Scene names in the order of OBS's Scenes list (top first). obs-websocket sends them bottom
+    // first, each with its sceneIndex (0 = bottom).
+    static List<string> Scenes(Dictionary<string, object> r)
+    {
+        List<KeyValuePair<int, string>> s = new List<KeyValuePair<int, string>>();
+        object[] list = r != null && r.ContainsKey("scenes") ? r["scenes"] as object[] : null;
+        if (list != null)
+            for (int i = 0; i < list.Length; i++)
+            {
+                Dictionary<string, object> d = list[i] as Dictionary<string, object>;
+                if (d == null) continue;
+                s.Add(new KeyValuePair<int, string>(d.ContainsKey("sceneIndex") ? Int(d, "sceneIndex") : i, Str(d, "sceneName")));
+            }
+        s.Sort(delegate (KeyValuePair<int, string> a, KeyValuePair<int, string> b) { return b.Key.CompareTo(a.Key); });
+        return s.ConvertAll(delegate (KeyValuePair<int, string> p) { return p.Value; });
+    }
+
+    static Dictionary<string, object> Args(string k, object v) { return new Dictionary<string, object> { { k, v } }; }
+
+    // ------------------------------------------------ the connection
+    // One request; its responseData (null when it has none). Throws ObsError when OBS refuses it or
+    // cannot be reached. A kept connection that went stale (OBS was closed and opened again) is
+    // opened again once, as long as the request had not reached OBS.
+    static Dictionary<string, object> Call(string type, Dictionary<string, object> data)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            string address = Address, password = Password, key = address + "\n" + password;
+            bool fresh = false;
+            if (ws == null || ws.State != WebSocketState.Open || wsFor != key) { Connect(address, password, key); fresh = true; }
+            string id = (++lastId).ToString();
+            Dictionary<string, object> d = null;
+            try
+            {
+                Send(new Dictionary<string, object> { { "op", 6 }, { "d", new Dictionary<string, object> {
+                    { "requestType", type }, { "requestId", id }, { "requestData", data ?? new Dictionary<string, object>() } } } });
+                while (d == null)
+                {
+                    Dictionary<string, object> m = Receive(6000);
+                    if (m == null) throw new IOException("OBS closed the connection");
+                    Dictionary<string, object> md = m.ContainsKey("d") ? m["d"] as Dictionary<string, object> : null;
+                    if (Int(m, "op") == 7 && md != null && Str(md, "requestId") == id) d = md;
+                }
+            }
+            catch (TimeoutException) { Close(); throw new ObsError("OBS did not answer", 0); }
+            catch (Exception)
+            {
+                Close();
+                if (fresh || attempt > 0) throw new ObsError("Lost the connection to OBS", 0);
+                continue;
+            }
+            Dictionary<string, object> st = d.ContainsKey("requestStatus") ? d["requestStatus"] as Dictionary<string, object> : null;
+            if (st != null && !Bool(st, "result"))
+            {
+                string c = Str(st, "comment");
+                throw new ObsError(c.Length > 0 ? c : "OBS refused " + type + " (" + Int(st, "code") + ")", Int(st, "code"));
+            }
+            return d.ContainsKey("responseData") ? d["responseData"] as Dictionary<string, object> : null;
+        }
+    }
+
+    // Hello (op 0) -> Identify (op 1, with the password's answer to the challenge) -> Identified (op 2).
+    static void Connect(string address, string password, string key)
+    {
+        Close();
+        string a = address.Trim();
+        Uri uri;
+        if (!Uri.TryCreate(a.Contains("://") ? a : "ws://" + a, UriKind.Absolute, out uri))
+            throw new ObsError("obs.address is not an address: " + a, 0);
+        ClientWebSocket s = new ClientWebSocket();
+        s.Options.Proxy = null;   // OBS is on this PC or the local network
+        try
+        {
+            using (CancellationTokenSource t = new CancellationTokenSource(3000)) Await(s.ConnectAsync(uri, t.Token));
+        }
+        catch (Exception)
+        {
+            s.Dispose();
+            throw new ObsError("OBS is not open, or its WebSocket server is off", 0);
+        }
+        ws = s;
+        try
+        {
+            Dictionary<string, object> hello = Receive(3000);
+            Dictionary<string, object> hd = hello != null && hello.ContainsKey("d") ? hello["d"] as Dictionary<string, object> : null;
+            if (hd == null || Int(hello, "op") != 0) throw new ObsError("No OBS WebSocket server at " + a, 0);
+            Dictionary<string, object> id = new Dictionary<string, object> { { "rpcVersion", 1 }, { "eventSubscriptions", 0 } };
+            Dictionary<string, object> auth = hd.ContainsKey("authentication") ? hd["authentication"] as Dictionary<string, object> : null;
+            if (auth != null)
+            {
+                if (password.Length == 0) throw new ObsError("OBS asks for a password: set obs.password in shortcuts.ini", 0);
+                id["authentication"] = Answer(password, Str(auth, "salt"), Str(auth, "challenge"));
+            }
+            Send(new Dictionary<string, object> { { "op", 1 }, { "d", id } });
+            Dictionary<string, object> ok = Receive(3000);
+            if (ok == null)
+            {
+                bool wrong = s.CloseStatus.HasValue && (int)s.CloseStatus.Value == 4009;   // AuthenticationFailed
+                throw new ObsError(wrong ? "Wrong OBS password (obs.password in shortcuts.ini)" : "OBS closed the connection", 0);
+            }
+            if (Int(ok, "op") != 2) throw new ObsError("OBS did not accept Xdeck", 0);
+            wsFor = key;
+        }
+        catch (ObsError) { Close(); throw; }
+        catch (Exception) { Close(); throw new ObsError("No OBS WebSocket server at " + a, 0); }
+    }
+
+    // obs-websocket 5: base64(sha256(base64(sha256(password + salt)) + challenge))
+    public static string Answer(string password, string salt, string challenge) { return Sha(Sha(password + salt) + challenge); }
+
+    static string Sha(string text)
+    {
+        using (SHA256 h = SHA256.Create()) return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(text)));
+    }
+
+    static void Close()
+    {
+        ClientWebSocket s = ws;
+        ws = null;
+        wsFor = null;
+        if (s == null) return;
+        try { s.Abort(); } catch { }
+        try { s.Dispose(); } catch { }
+    }
+
+    static void Send(object msg)
+    {
+        byte[] b = Encoding.UTF8.GetBytes(json.Serialize(msg));
+        using (CancellationTokenSource t = new CancellationTokenSource(3000))
+            Await(ws.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, t.Token));
+    }
+
+    // The next message, or null when OBS closed the connection. TimeoutException after ms.
+    static Dictionary<string, object> Receive(int ms)
+    {
+        byte[] buf = new byte[16384];
+        using (MemoryStream all = new MemoryStream())
+        using (CancellationTokenSource t = new CancellationTokenSource(ms))
+            while (true)
+            {
+                WebSocketReceiveResult r;
+                try { r = Await(ws.ReceiveAsync(new ArraySegment<byte>(buf), t.Token)); }
+                catch { if (t.IsCancellationRequested) throw new TimeoutException(); throw; }
+                if (r.MessageType == WebSocketMessageType.Close) return null;
+                all.Write(buf, 0, r.Count);
+                if (!r.EndOfMessage) continue;
+                Dictionary<string, object> m = json.DeserializeObject(Encoding.UTF8.GetString(all.ToArray())) as Dictionary<string, object>;
+                return m ?? new Dictionary<string, object>();
+            }
+    }
+
+    static void Await(Task t)
+    {
+        try { t.Wait(); }
+        catch (AggregateException e) { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw(); }
+    }
+
+    static T Await<T>(Task<T> t) { Await((Task)t); return t.Result; }
+
+    static bool Bool(Dictionary<string, object> d, string k) { return d != null && d.ContainsKey(k) && d[k] is bool && (bool)d[k]; }
+    static string Str(Dictionary<string, object> d, string k) { return d != null && d.ContainsKey(k) && d[k] != null ? d[k].ToString() : ""; }
+    static int Int(Dictionary<string, object> d, string k)
+    {
+        try { return d != null && d.ContainsKey(k) && d[k] != null ? Convert.ToInt32(d[k]) : 0; } catch { return 0; }
     }
 }
 
@@ -1786,7 +2189,7 @@ static class Ui
     // ------------------------------------------------------------ drawn icons
     // Solid icons drawn with paths (cut-outs are cleared to transparent), rendered at 2x,
     // then re-centred on their real ink bounds so every icon sits dead centre in its box.
-    // Kinds: pad, monitor, tv, headphones, speaker.
+    // Kinds: pad, monitor, tv, headphones, speaker, mic, rec (OBS recording), live (OBS stream).
     static readonly Dictionary<string, Bitmap> iconCache = new Dictionary<string, Bitmap>();
 
     public static void Icon(Graphics g, string kind, RectangleF box, Color c)
@@ -1820,6 +2223,8 @@ static class Ui
                 case "headphones": DrawHeadphones(g, c, fill, s); break;
                 case "speaker": DrawSpeaker(g, c, fill, s); break;
                 case "mic": DrawMic(g, c, fill, s); break;
+                case "rec": DrawRec(g, c, fill, s); break;
+                case "live": DrawLive(g, c, fill, s); break;
                 default: DrawPad(g, fill, clear, s); break;
             }
         }
@@ -1933,6 +2338,30 @@ static class Ui
         }
     }
 
+    // Record: a ring around a dot.
+    static void DrawRec(Graphics g, Color c, Brush fill, int s)
+    {
+        using (Pen ring = new Pen(c, s * 0.09f)) g.DrawEllipse(ring, s * 0.10f, s * 0.10f, s * 0.80f, s * 0.80f);
+        g.FillEllipse(fill, s * 0.30f, s * 0.30f, s * 0.40f, s * 0.40f);
+    }
+
+    // Live: a dot with two waves on each side.
+    static void DrawLive(Graphics g, Color c, Brush fill, int s)
+    {
+        g.FillEllipse(fill, s * 0.39f, s * 0.39f, s * 0.22f, s * 0.22f);
+        using (Pen wave = new Pen(c, s * 0.075f))
+        {
+            wave.StartCap = LineCap.Round;
+            wave.EndCap = LineCap.Round;
+            foreach (float r in new float[] { 0.40f, 0.72f })
+            {
+                float d = s * r, o = (s - d) / 2;
+                g.DrawArc(wave, o, o, d, d, -45, 90);
+                g.DrawArc(wave, o, o, d, d, 135, 90);
+            }
+        }
+    }
+
     // Copy the drawn ink so that its bounding box is centred in the bitmap.
     static Bitmap CenterInk(Bitmap src)
     {
@@ -2013,14 +2442,20 @@ static class Ui
     }
 }
 
-// ---------------------------------------------------------------- audio banner
+// ---------------------------------------------------------------- banner
+// Top left of the primary screen, over everything, without taking the focus: the audio output,
+// a device or controller that connects (a controller with its battery), the controller mouse, OBS.
 class Banner : Form
 {
     readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
+    readonly Queue<Action> after = new Queue<Action>();
     string title = "", caption = "Audio output", glyph = "speaker";
     int index, count;
+    int battery = NoBattery;      // a controller's battery line: percent, -1 unknown, Wired, or NoBattery
+    bool charging;
     DateTime shownAt;
-    const int HoldMs = 2200;
+    int holdMs = 2200;
+    const int NoBattery = -2, Wired = -3;
 
     public Banner()
     {
@@ -2056,13 +2491,50 @@ class Banner : Form
 
     public void Show(string caption, string name, string kind, int index, int count)
     {
+        battery = NoBattery;
+        holdMs = 2200;
+        Open(caption, name, kind, index, count);
+    }
+
+    // A controller: its name and, under it, its battery (pills, percent, charging) or USB.
+    public void ShowPad(string caption, Pad p)
+    {
+        battery = p.Conn == "USB" ? Wired : p.Battery;
+        charging = p.Charging;
+        holdMs = 3500;
+        Open(caption, p.Name, "pad", 0, 0);
+    }
+
+    // Shows it now, or once the banner on screen is gone (several controllers connected together).
+    public void ShowAfter(Action show)
+    {
+        if (Visible && anim.Enabled) after.Enqueue(show);
+        else show();
+    }
+
+    string BatteryText()
+    {
+        if (battery == Wired) return "USB";
+        if (battery < 0) return charging ? "Charging" : "Battery unknown";
+        return battery + "%" + (charging ? " · charging" : "");
+    }
+
+    const float BatX = 88, BatPillW = 3, BatPillH = 11, BatGap = 2;
+    static float BatPillsW { get { return Ui.PillCount * BatPillW + (Ui.PillCount - 1) * BatGap; } }
+
+    void Open(string caption, string name, string kind, int index, int count)
+    {
         this.caption = caption; title = name; glyph = kind; this.index = index; this.count = count;
         using (Graphics g = CreateGraphics())
         using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
         {
             int textW = (int)Math.Ceiling(g.MeasureString(title, tf).Width);
             using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
+            {
                 textW = Math.Max(textW, (int)Math.Ceiling(g.MeasureString(caption.ToUpperInvariant(), cf).Width));
+                if (battery != NoBattery)
+                    textW = Math.Max(textW, (int)Math.Ceiling((battery >= 0 ? BatPillsW + 8 : 0) + g.MeasureString(BatteryText(), cf).Width));
+            }
             Size = new Size(Math.Max(240, 88 + textW + 28), 84);
         }
         Rectangle wa = Screen.PrimaryScreen.WorkingArea;
@@ -2077,9 +2549,14 @@ class Banner : Form
     {
         double t = (DateTime.Now - shownAt).TotalMilliseconds;
         if (t < 140) Opacity = t / 140.0;
-        else if (t < 140 + HoldMs) Opacity = 1;
-        else if (t < 140 + HoldMs + 260) Opacity = 1 - (t - 140 - HoldMs) / 260.0;
-        else { anim.Stop(); Hide(); }
+        else if (t < 140 + holdMs) Opacity = 1;
+        else if (t < 140 + holdMs + 260) Opacity = 1 - (t - 140 - holdMs) / 260.0;
+        else
+        {
+            anim.Stop();
+            Hide();
+            if (after.Count > 0) after.Dequeue()();
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -2087,7 +2564,7 @@ class Banner : Form
         Graphics g = e.Graphics;
         Ui.Smooth(g);
         g.Clear(Ui.Back);
-        Color accent = Ui.Accent;
+        Color accent = glyph == "rec" || glyph == "live" ? Color.FromArgb(232, 72, 85) : Ui.Accent;
 
         // accent strip + icon disc
         using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 4, Height);
@@ -2103,8 +2580,27 @@ class Banner : Form
         using (Brush tb = new SolidBrush(Ui.Text))
             g.DrawString(title, tf, tb, 84, 32);
 
+        // a controller's battery: pills lit by level, then the percent (or USB / unknown)
+        if (battery != NoBattery)
+        {
+            float x = BatX;
+            Color bc = battery >= 0 ? Ui.BatteryColor(battery) : Ui.Dim;
+            if (battery >= 0)
+            {
+                int lit = Math.Max(1, (int)Math.Ceiling(battery / (100.0 / Ui.PillCount)));
+                for (int i = 0; i < Ui.PillCount; i++)
+                    using (GraphicsPath p = Ui.Rounded(new RectangleF(x + i * (BatPillW + BatGap), 63, BatPillW, BatPillH), BatPillW / 2))
+                    using (Brush b = new SolidBrush(i < lit ? bc : Color.FromArgb(62, 62, 66)))
+                        g.FillPath(b, p);
+                x += BatPillsW + 8;
+            }
+            using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
+            using (Brush tb = new SolidBrush(bc))
+                g.DrawString(BatteryText(), cf, tb, x - 2, 60);
+        }
+
         // position dots
-        if (count > 1)
+        else if (count > 1)
         {
             float x = 88, y = 64;
             for (int i = 0; i < count; i++)
@@ -2516,10 +3012,17 @@ class XdeckApp : Form
                 panel.MouseChanged();
             });
         };
+        // OBS shortcuts: the worker thread reports what OBS did; the banner shows it.
+        Obs.Said = delegate (string caption, string text, string icon, int index, int count)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { banner.Show(caption, text, icon, index, count); });
+        };
         XInputPoller.Start();
-        System.Windows.Forms.Timer scan = new System.Windows.Forms.Timer();
-        scan.Interval = 3000;
-        scan.Tick += delegate { try { Pads.RefreshReaders(); UpdateTrayText(); } catch { } };
+        // Controllers: battery in the tray tooltip, a banner when one connects or runs low.
+        // The first scan (soon after start) only learns which are there already.
+        scan = new System.Windows.Forms.Timer();
+        scan.Interval = 1500;
+        scan.Tick += delegate { WatchPads(); };
         scan.Start();
         try { Pads.RefreshReaders(); } catch { }
 
@@ -2762,11 +3265,62 @@ class XdeckApp : Form
         base.WndProc(ref m);
     }
 
+    // ------------------------------------------------ controllers
+    // A banner for each controller that connects, with its name and battery, and one when a
+    // wireless controller's battery gets low (again only after it charged or came back up).
+    const int LowBattery = 15, BatteryWaitMs = 5000;
+    System.Windows.Forms.Timer scan;
+    HashSet<string> knownPads;                                     // null until the first scan
+    readonly Dictionary<string, DateTime> padsNew = new Dictionary<string, DateTime>();
+    readonly HashSet<string> lowWarned = new HashSet<string>();
+
+    void WatchPads()
+    {
+        List<Pad> pads;
+        try { Pads.RefreshReaders(); pads = Pads.List(); } catch { return; }
+        UpdateTrayText(pads);
+        DateTime now = DateTime.Now;
+        HashSet<string> keys = new HashSet<string>();
+        foreach (Pad p in pads)
+        {
+            keys.Add(p.Mac);
+            if (knownPads != null && !knownPads.Contains(p.Mac)) padsNew[p.Mac] = now;
+        }
+        // Controllers already there when Xdeck starts get no banner.
+        knownPads = keys;
+
+        foreach (string key in new List<string>(padsNew.Keys))
+        {
+            Pad p = pads.Find(delegate (Pad x) { return x.Mac == key; });
+            if (p == null) { padsNew.Remove(key); continue; }   // gone again before its banner
+            // A DualSense or Pro Controller reports its battery in its first input reports: wait a moment for it.
+            if (p.Conn != "USB" && p.Battery < 0 && (now - padsNew[key]).TotalMilliseconds < BatteryWaitMs) continue;
+            padsNew.Remove(key);
+            if (p.Battery >= 0 && p.Battery <= LowBattery && !p.Charging) lowWarned.Add(key);   // the banner shows it already
+            banner.ShowAfter(delegate { banner.ShowPad("Controller connected", p); });
+        }
+
+        foreach (Pad p in pads)
+        {
+            if (p.Conn == "USB" || p.Battery < 0 || padsNew.ContainsKey(p.Mac)) continue;
+            if (p.Charging || p.Battery > LowBattery + 5) { lowWarned.Remove(p.Mac); continue; }
+            if (p.Battery <= LowBattery && lowWarned.Add(p.Mac))
+            {
+                Pad low = p;
+                banner.ShowAfter(delegate { banner.ShowPad("Controller battery low", low); });
+            }
+        }
+        lowWarned.RemoveWhere(delegate (string k) { return !keys.Contains(k); });
+
+        // while a new controller's battery is on its way, look again sooner
+        scan.Interval = padsNew.Count > 0 ? 1000 : 3000;
+    }
+
     // Tray tooltip: battery of each wireless controller, with a bolt while charging (max 63 chars).
-    void UpdateTrayText()
+    void UpdateTrayText(List<Pad> pads)
     {
         List<string> parts = new List<string>();
-        foreach (Pad p in Pads.List())
+        foreach (Pad p in pads)
             if (p.Conn != "USB" && p.Battery >= 0)
                 parts.Add(p.Name + " " + p.Battery + "%" + (p.Charging ? " ⚡" : ""));
         string text = parts.Count == 0 ? "Xdeck" : string.Join(" · ", parts.ToArray());
@@ -2854,7 +3408,7 @@ static class Program
     // "Xdeck.exe --icons <file.png>" renders every icon (banner size and 4x) for a visual check.
     static void IconSheet(string file)
     {
-        string[] kinds = { "pad", "monitor", "tv", "headphones", "speaker", "mic" };
+        string[] kinds = { "pad", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live" };
         Color accent = Ui.Accent;
         Color ink = accent.GetBrightness() < 0.35f ? Color.White : accent;
         using (Bitmap bmp = new Bitmap(kinds.Length * 120 + 20, 220))

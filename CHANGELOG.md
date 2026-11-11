@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — 2026-11-11
+
+- **A controller that connects shows up on screen**: a banner names it with its battery (pills and
+  percent, *charging*, or `USB`). Several at once come one after another. When a wireless
+  controller's battery drops to 15%, a banner warns once (again only after it has charged).
+- **OBS Studio from the controller**, over OBS's own WebSocket server (OBS 28+, Tools › WebSocket
+  Server Settings): R1 + D-pad right + Cross / Square / Triangle / Circle start or stop recording,
+  pause it, start or stop streaming and save the replay buffer; R1 + R3 / R1 + L3 switch to the next
+  / previous scene. `shortcuts.ini` also takes `obs.virtualcam`, `obs.scene.<name>`,
+  `obs.mute.<source>` and `obs.hotkey.<OBS hotkey>`, plus `obs.address` and `obs.password`. A
+  banner says what OBS did, or why it could not (OBS closed, wrong password, no such scene).
+  An existing `shortcuts.ini` gets the OBS lines added.
+
 ## 0.3.2 — 2026-11-10
 
 - The updater writes what it does and why it stops to `update.log` in the data folder
