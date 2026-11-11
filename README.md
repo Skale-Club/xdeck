@@ -253,11 +253,12 @@ pelo próprio controle.
   atualização. As configurações ficam. Quando chega uma versão nova, o rodapé do painel mostra
   **Updates** com a barra de progresso e **Restart to update**; fora isso, só a versão.
 - **Controle pelo celular (tipo Unified Remote):** no celular, abra **xdeck.skale.club** e instale o
-  app (Android: **Install the app**; iPhone: **Compartilhar › Adicionar à Tela de Início**). No PC,
-  botão direito na engrenagem › **Phone remote** › **Pair a phone…** (o painel mostra o código); digite o código de 6 dígitos no app,
-  uma vez só. Depois ele conecta sozinho, de qualquer lugar (até no 4G). O celular vira touchpad,
+  app (Android: **Install the app**; iPhone: **Compartilhar › Adicionar à Tela de Início**). Com o celular no
+  mesmo Wi-Fi do PC, toque em **Find my PC**: aparece um código de 6 dígitos na tela do PC; digite no
+  app, uma vez só. Depois ele conecta sozinho, de qualquer lugar (até no 4G). O celular vira touchpad,
   teclado, teclas de mídia, troca de saída de áudio e volume, e botões do OBS. Tudo vai criptografado
-  de ponta a ponta. O mesmo menu lista os celulares pareados; clique num para remover.
+  de ponta a ponta. Os celulares pareados ficam no menu da engrenagem › **Phone remote** (clique num
+  para remover).
 - **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel como círculos embaixo dos
   controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
