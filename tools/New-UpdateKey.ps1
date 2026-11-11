@@ -5,6 +5,9 @@
 #                                        %APPDATA%\Skale\xdeck-update-key.xml, and prints the public key
 # Keep the private key out of the repository and back it up: without it no installed copy accepts
 # a new release, and every PC would need a manual reinstall with a new key.
+# Run it (and build.ps1 -Release) from a normal terminal: a terminal inside a Microsoft Store app,
+# such as Claude Desktop, has the new files it writes under AppData redirected to that app's own
+# private copy, where other programs never see them.
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 — 2026-11-10
+
+- The updater writes what it does and why it stops to `update.log` in the data folder
+  (`%LOCALAPPDATA%\Xdeck`).
+
 ## 0.3.1 — 2026-11-10
 
 - **XdeckSetup.exe**: install Xdeck like any Windows app, from one file. Pick everyone on this PC

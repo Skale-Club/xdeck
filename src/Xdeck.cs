@@ -222,7 +222,19 @@ static class Updater
         t.Start();
     }
 
-    static void Set(State s) { Now = s; Action c = Changed; if (c != null) c(); }
+    static void Set(State s) { Now = s; Log("state " + s + (Version != null ? " " + Version : "")); Action c = Changed; if (c != null) c(); }
+
+    // Data\update.log: what the updater did and why it stopped (kept under 200 KB).
+    public static void Log(string line)
+    {
+        try
+        {
+            string f = Path.Combine(AppPaths.Data, "update.log");
+            if (File.Exists(f) && new FileInfo(f).Length > 200 * 1024) File.Delete(f);
+            File.AppendAllText(f, DateTime.Now.ToString("s") + " [" + Current + " pid " + Process.GetCurrentProcess().Id + "] " + line + "\r\n");
+        }
+        catch { }
+    }
 
     static void Check()
     {
@@ -259,6 +271,7 @@ static class Updater
                 Error = ex is WebException && ((WebException)ex).Response is HttpWebResponse &&
                         ((HttpWebResponse)((WebException)ex).Response).StatusCode == HttpStatusCode.NotFound
                         ? "no update feed yet" : ex.Message;
+                Log("check failed: " + ex);
                 Dictionary<string, object> ready = ReadReady();   // a download made earlier is still good
                 if (ready != null) { Version = (string)ready["version"]; Set(State.Ready); }
                 else Set(State.Failed);
@@ -333,11 +346,15 @@ static class Updater
         {
             Dictionary<string, object> r = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(ReadyFile));
             string v = (string)r["version"];
-            if (Newer(v, Current) <= 0 || !File.Exists(ZipOf(v))) return null;
-            if (new FileInfo(ZipOf(v)).Length > MaxDownload || !Verify(File.ReadAllBytes(ZipOf(v)), (string)r["signature"])) return null;
+            if (Newer(v, Current) <= 0) return null;   // already installed
+            if (!File.Exists(ZipOf(v))) { Log("ready " + v + ": its zip is missing"); return null; }
+            if (new FileInfo(ZipOf(v)).Length > MaxDownload || !Verify(File.ReadAllBytes(ZipOf(v)), (string)r["signature"]))
+            { Log("ready " + v + ": the zip does not match its signature"); return null; }
             return r;
         }
-        catch { return null; }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+        catch (Exception ex) { Log("ready: " + ex); return null; }
     }
 
     // After an update: the downloads and the files an update moved aside are no longer needed.
@@ -375,7 +392,8 @@ static class Updater
         try
         {
             Dictionary<string, object> ready = ReadReady();
-            if (ready == null) { error = "no update is ready"; return false; }
+            Log("install requested (relaunch " + relaunch + ")");
+            if (ready == null) { error = "no update is ready"; Log("install: " + error); return false; }
             string version = (string)ready["version"];
             string tmp = Path.Combine(Path.GetTempPath(), "xdeck-update-" + version + "-" + DateTime.Now.Ticks);
             using (ZipArchive zip = ZipFile.OpenRead(ZipOf(version)))
@@ -398,11 +416,12 @@ static class Updater
             psi.UseShellExecute = true;
             psi.WorkingDirectory = tmp;
             if (!FolderWritable(AppPaths.Exe)) psi.Verb = "runas";   // Program Files: one administrator prompt
+            Log("install: starting " + helper + (psi.Verb == "runas" ? " as administrator" : ""));
             Process.Start(psi);
             return true;
         }
-        catch (Win32Exception) { error = "the administrator prompt was turned down"; return false; }
-        catch (Exception ex) { error = ex.Message; return false; }
+        catch (Win32Exception ex) { error = "the administrator prompt was turned down"; Log("install: " + ex); return false; }
+        catch (Exception ex) { error = ex.Message; Log("install failed: " + ex); return false; }
     }
 
     // --apply-update <target> <pid> [--relaunch], run from the unpacked update: wait for the old copy
@@ -2535,6 +2554,7 @@ class XdeckApp : Form
                 while (true)
                 {
                     ev.WaitOne();
+                    Updater.Log("--update received (handle " + IsHandleCreated + ")");
                     if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { InstallUpdate(); });
                 }
         });
@@ -2576,6 +2596,7 @@ class XdeckApp : Form
 
     void InstallUpdate()
     {
+        Updater.Log("restart to update (state " + Updater.Now + ")");
         string error;
         if (Updater.Install(true, out error)) { tray.Visible = false; Application.Exit(); }
         else Balloon("Xdeck could not update", error, false);
