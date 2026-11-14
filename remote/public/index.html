@@ -83,10 +83,14 @@
   .chips { display: flex; gap: 8px; margin-top: 6px; }
   .chip { flex: 1; min-width: 0; min-height: 68px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); position: relative;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 600 12.5px -apple-system, "Segoe UI", sans-serif; }
-  .chip svg { width: 26px; height: 26px; }
+  .chip svg { width: 28px; height: 28px; }
   .chip.on { box-shadow: inset 0 0 0 2px var(--accent); }
   .chip .run { position: absolute; top: 9px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
-  .apphead { display: flex; align-items: center; gap: 10px; padding: 0 2px; margin-top: 4px; }
+  #appBody { display: flex; flex-direction: column; gap: 12px; }
+  #appBody .grid3 { gap: 12px; }
+  #appBody .lbl { margin: 4px 2px -4px; }
+  .apphead { display: flex; align-items: center; gap: 10px; padding: 0 2px; margin-top: 6px; }
+  .apphead svg { width: 22px; height: 22px; flex: none; }
   .apphead .nm { flex: 1; font-weight: 650; font-size: 17px; }
   .apphead .st { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); }
   .apphead .st i { width: 8px; height: 8px; border-radius: 50%; background: #5a5a60; }
@@ -722,10 +726,12 @@ $("muteBtn").addEventListener("click", () => send({ t: "mute" }));
 // One button per app the PC has (the PC lists them, with whether each is running: an app that is
 // not installed there has no button), and under it the chosen app's open / close and its buttons.
 // OBS's buttons go as {t:"obs"} (OBS's WebSocket server), the rest as {t:"app", app, a}.
+// The makers' logos, white like the panel's: OBS Studio and Steam from Simple Icons (CC0), Windows
+// from Material Design Icons (Apache 2.0, ui/brands/LICENSE-mdi.txt), as in ui/brands.
 const ICONS = {
-  obs: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>',
-  steam: '<svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 10.5v4M5.5 12.5h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="11.2" r="1.3" fill="currentColor"/><circle cx="17.8" cy="13.8" r="1.3" fill="currentColor"/></svg>',
-  settings: '<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1L5.3 5.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  obs: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12,24C5.383,24,0,18.617,0,12S5.383,0,12,0s12,5.383,12,12S18.617,24,12,24z M12,1.109 C5.995,1.109,1.11,5.995,1.11,12C1.11,18.005,5.995,22.89,12,22.89S22.89,18.005,22.89,12C22.89,5.995,18.005,1.109,12,1.109z M6.182,5.99c0.352-1.698,1.503-3.229,3.05-3.996c-0.269,0.273-0.595,0.483-0.844,0.78c-1.02,1.1-1.48,2.692-1.199,4.156 c0.355,2.235,2.455,4.06,4.732,4.028c1.765,0.079,3.485-0.937,4.348-2.468c1.848,0.063,3.645,1.017,4.7,2.548 c0.54,0.799,0.962,1.736,0.991,2.711c-0.342-1.295-1.202-2.446-2.375-3.095c-1.135-0.639-2.529-0.802-3.772-0.425 c-1.56,0.448-2.849,1.723-3.293,3.293c-0.377,1.25-0.216,2.628,0.377,3.772c-0.825,1.429-2.315,2.449-3.932,2.756 c-1.244,0.261-2.551,0.059-3.709-0.464c1.036,0.302,2.161,0.355,3.191-0.011c1.381-0.457,2.522-1.567,3.024-2.935 c0.556-1.49,0.345-3.261-0.591-4.54c-0.7-1.007-1.803-1.717-3.002-1.969c-0.38-0.068-0.764-0.098-1.148-0.134 c-0.611-1.231-0.834-2.66-0.528-3.996L6.182,5.99z"/></svg>',
+  steam: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></svg>',
+  settings: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M3,12V6.75L9,5.43V11.91L3,12M20,3V11.75L10,11.9V5.21L20,3M3,13L9,13.09V19.9L3,18.75V13M20,13.25V22L10,20.09V13.1L20,13.25Z"/></svg>',
 };
 const APPS = {
   obs: { label: "OBS", name: "OBS Studio", needsOpen: true,
@@ -753,7 +759,7 @@ function renderApps() {
     `<button class="chip${a.id === appSel ? " on" : ""}" data-app="${a.id}">${ICONS[a.id]}<span>${esc(APPS[a.id].label)}</span>${a.running ? '<i class="run"></i>' : ""}</button>`).join("");
   const a = list.find((x) => x.id === appSel), d = APPS[a.id];
   const busy = appBusy[a.id] && appBusy[a.id].running === a.running && Date.now() < appBusy[a.id].until ? appBusy[a.id].text : "";
-  let h = `<div class="apphead"><span class="nm">${esc(d.name)}</span><span class="st"><i class="${a.running ? "on" : ""}"></i>${busy || (a.running ? "Open" : "Closed")}</span></div>`;
+  let h = `<div class="apphead">${ICONS[a.id]}<span class="nm">${esc(d.name)}</span><span class="st"><i class="${a.running ? "on" : ""}"></i>${busy || (a.running ? "Open" : "Closed")}</span></div>`;
   h += `<div class="row">`;
   if (!a.running || d.reopen) h += `<button class="btn${a.running ? "" : " accent"}" data-app-a="open">${a.running ? "Show" : "Open"}</button>`;
   if (a.running) h += `<button class="btn danger" data-app-a="close">Close</button>`;
