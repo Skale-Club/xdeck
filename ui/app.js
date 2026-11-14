@@ -5,8 +5,10 @@
 //                                               combo: that shortcut as written in shortcuts.ini, "" if off)
 //   {type:"shortcuts", combo}                   shortcuts.ini was saved
 //   {type:"pad", btn}                           controller navigation: up down left right a b x start bhold
+//   {type:"tray", hidden}                       the tray icon is under ^ instead of on the taskbar
 // and receives:
 //   {type:"size", w, h}  {type:"close"}  {type:"select", id}  {type:"mouse", key, on}  {type:"update"}
+//   {type:"tray-open"} (open ^)  {type:"tray-dismiss"} (hide the tray hint for good)
 // state.version is this build; state.update the downloaded release waiting for a restart (or null).
 // each pad in state also carries canMouse / mouse (that controller as a mouse); state.mouseKey is
 // the mouse shortcut.
@@ -24,6 +26,7 @@ let expanded = 0;       // 0 none, 1 outputs, 2 microphones
 let testing = null;     // pad under test
 let padMode = false;    // a controller is driving the panel: show the focus ring and the button help
 let focusKey = null;    // data-nav of the focused item
+let trayHidden = false; // Windows keeps the tray icon under ^: the panel says how to drag it out
 let panelCombo = "L1 + Right + Triangle";   // the controller shortcut that opens / hides the panel
 const svgCache = {};
 
@@ -221,11 +224,24 @@ function panelHtml() {
     h += `</div>`;
   }
   h += remoteHtml();
+  h += trayHintHtml();
   h += `<div id="updates">${updatesHtml()}</div>`;
   if (padMode)
     h += `<div class="pad-help"><span><b>A ✕</b> select</span><span><b>B ◯</b> back</span><span><b>X ▢</b> mute</span><span><b>◀ ▶</b> volume · device</span></div>
           ${panelCombo ? `<div class="hint-line pad-combo">${esc(panelCombo)} hides the panel</div>` : ""}`;
   return h + `</div>`;
+}
+
+// Windows 11 hides new tray icons under ^ and ignores apps (and even its own Settings switch)
+// asking to show them; dragging the icon out is what works. The host checks the taskbar each time
+// the panel opens, so this goes away by itself once the icon is out.
+function trayHintHtml() {
+  if (!trayHidden) return "";
+  return `<div class="card tray-hint">
+      <span class="disc">${I.gear}</span>
+      <span class="who"><div class="nm">Keep Xdeck on the taskbar</div><div class="sub wrap">Windows hid the Xdeck icon under <b>^</b>. Drag it from there onto the taskbar.</div>
+        <div class="tray-acts"><button class="upd-btn go" data-act="tray-open" data-nav="tray-open">Show me</button><button class="link-btn" data-act="tray-dismiss" data-nav="tray-dismiss">Don't show again</button></div></span>
+    </div>`;
 }
 
 // ------------------------------------------------------------ phone remote
@@ -825,6 +841,8 @@ $app.addEventListener("click", (e) => {
   else if (act === "test") openTester(t.dataset.key);
   else if (act === "back") backToPanel();
   else if (act === "update") send({ type: "update" });
+  else if (act === "tray-open") send({ type: "tray-open" });
+  else if (act === "tray-dismiss") { trayHidden = false; send({ type: "tray-dismiss" }); render(); }
   else if (act === "remote-code") requestCode();
   else if (act === "remote-cancel") send({ type: "remote-cancel" });
   else if (act === "remote-unpair") send({ type: "remote-unpair", id: t.dataset.id });
@@ -860,6 +878,7 @@ if (host) host.addEventListener("message", (e) => {
   else if (m.type === "shortcuts") { panelCombo = m.combo || ""; if (view === "panel") render(); }
   else if (m.type === "update") { state.upd = m.u; updateUpdates(); }
   else if (m.type === "pad") onPad(m.btn);
+  else if (m.type === "tray") { trayHidden = !!m.hidden; if (view === "panel") render(); }
 });
 
 // Design preview without the app: index.html#preview=g29 (or xbox, dualsense, …) opens that tester.

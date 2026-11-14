@@ -29,6 +29,7 @@ function panel() {
       receive({ data: { type: "state", outs: [], mics: [], pads: [], devices: [], ...value } });
       return app.innerHTML;
     },
+    message(data) { receive({ data }); return app.innerHTML; },
     click(act) {
       appEvents.click({ target: { closest: () => ({ dataset: { act } }) } });
       return app.innerHTML;
@@ -161,4 +162,20 @@ test("Settings lists existing phones safely without unpairing them", () => {
   assert.match(html, /Connected/);
   assert.match(html, /Offline/);
   assert.equal(ui.messages.filter(m => m.type === "remote-unpair").length, 0);
+});
+
+test("the tray hint shows while the icon is under ^, opens it, and can be dismissed", () => {
+  const ui = panel();
+  assert.doesNotMatch(ui.state({}), /tray-hint/);
+  const hidden = ui.message({ type: "tray", hidden: true });
+  assert.match(hidden, /Keep Xdeck on the taskbar/);
+  assert.match(hidden, /data-act="tray-open"/);
+  assert.match(ui.state({}), /tray-hint/, "a state refresh keeps the hint");
+  ui.click("tray-open");
+  assert.equal(ui.messages.at(-1).type, "tray-open");
+  assert.doesNotMatch(ui.message({ type: "tray", hidden: false }), /tray-hint/, "gone once the icon is out");
+  ui.message({ type: "tray", hidden: true });
+  const dismissed = ui.click("tray-dismiss");
+  assert.equal(ui.messages.at(-1).type, "tray-dismiss");
+  assert.doesNotMatch(dismissed, /tray-hint/);
 });
