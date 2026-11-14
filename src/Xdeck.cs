@@ -2944,10 +2944,9 @@ static class Remote
     public static volatile string CodeFrom;     // the phone that asked for it ("Find my PC"), or null
     public static DateTime CodeUntil;
     public static Action PairRequested;         // set by the app: a phone asked, open the panel on the code
-    public static Action<Action> OnUi;          // set by the app: runs on the UI thread (audio)
     public static Action Changed;               // set by the app: on / online / code / phones changed
     public static Action<string> Paired;        // set by the app: a phone (its name) just paired
-    public static Action<string> AudioChanged;  // set by the app: "out" or "vol" changed from a phone (UI thread): the banner
+    public static Action<string> AudioChanged;  // set by the app: out / vol / mic / micvol changed from a phone (audio thread): the banner
 
     public class Phone
     {
@@ -3168,7 +3167,12 @@ static class Remote
         byte[] b = Encoding.UTF8.GetBytes(Json(m));
         lock (sendLock)
         {
-            try { c.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, CancellationToken.None).Wait(10000); } catch { }
+            try
+            {
+                if (!c.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, CancellationToken.None).Wait(10000))
+                    Log("send: no answer from the relay in 10 s");
+            }
+            catch (Exception e) { Exception x = e is AggregateException && e.InnerException != null ? e.InnerException : e; Log("send: " + x.GetType().Name + ": " + x.Message); }
         }
     }
 
@@ -3328,43 +3332,46 @@ static class Remote
                     break;
                 }
             case "out":
+            case "mic":
                 {
                     string id = m["id"] as string;
-                    RunUi(delegate
+                    bool mic = t == "mic";
+                    RunAudio(delegate
                     {
-                        try { Audio.SetDefault(id); Said("out"); } catch (Exception e) { Log("out " + id + ": " + e.Message); }
-                        Broadcast();
+                        // only one of this PC's own endpoints, of the kind asked for
+                        if (Audio.Active(mic).Find(delegate (Audio.Endpoint ep) { return ep.Id == id; }) == null) { Log(t + ": no such device " + id); return; }
+                        Audio.SetDefault(id);
+                        Said(mic ? "mic" : "out");
+                        Push(true);
                     });
                     break;
                 }
             case "vol":
+            case "micvol":
                 {
                     double v = Math.Max(0, Math.Min(1, Convert.ToDouble(m["v"])));
-                    RunUi(delegate
+                    bool mic = t == "micvol";
+                    RunAudio(delegate
                     {
-                        try
-                        {
-                            string id = Audio.DefaultId();
-                            if (id == null) { Log("vol: no output"); return; }
-                            Audio.SetVolume(id, (float)v);
-                            Said("vol");
-                        }
-                        catch (Exception e) { Log("vol: " + e.Message); }
+                        string id = Audio.DefaultId(mic);
+                        if (id == null) { Log(t + ": no default device"); return; }
+                        Audio.SetVolume(id, (float)v);
+                        Said(mic ? "micvol" : "vol");
                     });
                     break;
                 }
             case "mute":
-                RunUi(delegate
+            case "micmute":
                 {
-                    try
+                    bool mic = t == "micmute";
+                    RunAudio(delegate
                     {
-                        float lv; bool mu; string id = Audio.DefaultId();
-                        if (id != null && Audio.GetVolume(id, out lv, out mu)) { Audio.SetMute(id, !mu); Said("vol"); }
-                    }
-                    catch (Exception e) { Log("mute: " + e.Message); }
-                    Broadcast();
-                });
-                break;
+                        float lv; bool mu; string id = Audio.DefaultId(mic);
+                        if (id != null && Audio.GetVolume(id, out lv, out mu)) { Audio.SetMute(id, !mu); Said(mic ? "micvol" : "vol"); }
+                        Push(true);
+                    });
+                    break;
+                }
             case "app":
                 {
                     string app = m["app"] as string, a = m["a"] as string;
@@ -3382,26 +3389,68 @@ static class Remote
                     if (Array.IndexOf(ObsActions, a) >= 0) Obs.Run(new ObsBinding { Key = "obs." + a, Action = a, Remote = true });
                     break;
                 }
-            case "state": RunUi(delegate { reply(State()); }); break;
+            case "state":
+                RunAudio(delegate
+                {
+                    Dictionary<string, object> st = State();
+                    if (!stateLogged) { stateLogged = true; Log("state: answering a phone (" + ((List<object>)st["outs"]).Count + " outputs, " + ((List<object>)st["mics"]).Count + " microphones)"); }
+                    reply(st);
+                });
+                break;
+        }
+    }
+    static bool stateLogged;
+
+    // The phones' audio requests run on their own thread (STA, like the UI thread: Windows' audio
+    // objects are made for it), in order. They never go through the UI thread's queue, so they do
+    // not depend on the panel or the tray, and a slow audio driver cannot hold up the interface.
+    static readonly Queue<Action> audioQueue = new Queue<Action>();
+    static Thread audioThread;
+
+    static void RunAudio(Action a)
+    {
+        lock (audioQueue)
+        {
+            if (audioQueue.Count >= 64) return;   // a stuck driver: drop, do not pile up
+            audioQueue.Enqueue(a);
+            Monitor.Pulse(audioQueue);
+            if (audioThread != null) return;
+            audioThread = new Thread(AudioLoop);
+            audioThread.IsBackground = true;
+            audioThread.SetApartmentState(ApartmentState.STA);
+            audioThread.Start();
         }
     }
 
-    static void RunUi(Action a)
+    static void AudioLoop()
     {
-        Action<Action> on = OnUi;
-        if (on != null) on(a); else a();
+        while (true)
+        {
+            Action a;
+            lock (audioQueue)
+            {
+                while (audioQueue.Count == 0) Monitor.Wait(audioQueue);
+                a = audioQueue.Dequeue();
+            }
+            try { a(); } catch (Exception e) { Log("audio: " + e.GetType().Name + ": " + e.Message); }
+        }
     }
 
-    static void Said(string what) { Action<string> a = AudioChanged; if (a != null) a(what); }
+    // The app shows the banner and refreshes the panel (it moves to the UI thread itself).
+    static void Said(string what) { Action<string> a = AudioChanged; if (a != null) try { a(what); } catch { } }
 
-    // every phone online gets the audio outputs and the apps again (after a change)
-    public static void Broadcast() { RunUi(delegate { Push(true); }); }
+    // every phone online gets the audio and the apps again (after a change)
+    public static void Broadcast() { RunAudio(delegate { Push(true); }); }
 
-    // On the UI thread, every 2 s (the app's audio watch): what the phones show, sent again when
-    // it changed on the PC (the panel, the controller, Windows, an app opened or closed).
-    public static void PushIfChanged() { Push(false); }
+    // Every 2 s (the app's audio watch): what the phones show, sent again when it changed on the PC
+    // (the panel, the controller, Windows, an app opened or closed).
+    public static void PushIfChanged()
+    {
+        if (!Phones.Exists(delegate (Phone p) { return p.Online; })) { lastPushed = null; return; }
+        RunAudio(delegate { Push(false); });
+    }
 
-    static string lastPushed;
+    static string lastPushed;   // only touched on the audio thread
     static void Push(bool always)
     {
         List<Phone> online = Phones.FindAll(delegate (Phone p) { return p.Online; });
@@ -3413,18 +3462,27 @@ static class Remote
         foreach (Phone p in online) SendTo(p, st);
     }
 
+    // Outputs and microphones (the default one checked, its volume and mute), and the apps.
     static Dictionary<string, object> State()
     {
-        List<object> outs = new List<object>();
-        string def = null;
-        float vol = 0; bool mute = false;
-        try
+        Dictionary<string, object> st = new Dictionary<string, object> { { "t", "state" } };
+        foreach (bool mic in new bool[] { false, true })
         {
-            foreach (Audio.Endpoint ep in Audio.Active(false)) outs.Add(new Dictionary<string, object> { { "id", ep.Id }, { "name", ep.Name } });
-            def = Audio.DefaultId(false);
-            if (def != null) Audio.GetVolume(def, out vol, out mute);
+            List<object> list = new List<object>();
+            string def = null;
+            float vol = 0; bool mute = false;
+            try
+            {
+                foreach (Audio.Endpoint ep in Audio.Active(mic)) list.Add(new Dictionary<string, object> { { "id", ep.Id }, { "name", ep.Name } });
+                def = Audio.DefaultId(mic);
+                if (def != null) Audio.GetVolume(def, out vol, out mute);
+            }
+            catch (Exception e) { Log((mic ? "microphones: " : "outputs: ") + e.Message); }
+            st[mic ? "mics" : "outs"] = list;
+            st[mic ? "defMic" : "def"] = def;
+            st[mic ? "micVol" : "vol"] = Math.Round(vol, 3);
+            st[mic ? "micMute" : "mute"] = mute;
         }
-        catch (Exception e) { Log("state: " + e.Message); }
         List<object> apps = new List<object>();
         try
         {
@@ -3432,7 +3490,8 @@ static class Remote
                 apps.Add(new Dictionary<string, object> { { "id", a.Id }, { "name", a.Name }, { "running", a.Running } });
         }
         catch (Exception e) { Log("apps: " + e.Message); }
-        return new Dictionary<string, object> { { "t", "state" }, { "outs", outs }, { "def", def }, { "vol", Math.Round(vol, 3) }, { "mute", mute }, { "apps", apps } };
+        st["apps"] = apps;
+        return st;
     }
 }
 
@@ -4985,14 +5044,16 @@ class XdeckApp : Form
         w.Start();
 
         // Phone remote (off until turned on in the panel): audio on the UI thread, the panel follows it.
-        Remote.OnUi = delegate (Action a) { if (IsHandleCreated) BeginInvoke(a); else a(); };
         Remote.Changed = delegate { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.SendState(); }); };
         Remote.PairRequested = delegate
         {
             // a phone on this network asked to connect: bring up the panel with the code to type
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.ShowPanel(); panel.SendState(); });
         };
-        Remote.AudioChanged = delegate (string what) { PhoneAudio(what); };
+        Remote.AudioChanged = delegate (string what)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { PhoneAudio(what); });
+        };
         Apps.Said = delegate (string caption, string text)
         {
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { banner.Show(caption, text, "monitor", 0, 0); });
@@ -5463,17 +5524,25 @@ class XdeckApp : Form
         catch (Exception ex) { banner.ShowDevice("Error: " + ex.Message, 0, 0); }
     }
 
-    // The phone changed the output or the volume: the same banner as the controller's audio combo.
+    // The phone changed the output, the microphone or a volume: the same banners as the controller's
+    // audio combo.
     void PhoneAudio(string what)
     {
         try
         {
-            string id = Audio.DefaultId();
+            bool mic = what == "mic" || what == "micvol";
+            string id = Audio.DefaultId(mic);
             if (id == null) return;
             if (what == "out")
             {
                 List<string> active = ActiveDevices();
                 banner.ShowDevice(Audio.Name(id), Math.Max(0, active.IndexOf(id)), active.Count);
+            }
+            else if (what == "mic")
+            {
+                List<Audio.Endpoint> mics = Audio.Active(true);
+                string n = Audio.Name(id);
+                banner.Show("Microphone", n, "mic", Math.Max(0, mics.FindIndex(delegate (Audio.Endpoint ep) { return ep.Id == id; })), mics.Count, Brands.Of(n, null));
             }
             else
             {

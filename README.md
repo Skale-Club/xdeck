@@ -182,7 +182,7 @@ The app makes the phone:
 | **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; Left / Middle / Right buttons |
 | **Keyboard** | What you type goes to the PC (any language, autocorrect too); Ctrl / Alt / Shift / Win, Esc, Tab, arrows, Alt+Tab, copy / paste |
 | **Media** | Play / pause, previous, next, volume, mute, fullscreen |
-| **Audio** | Switch the audio output, volume and mute (the PC shows the same banner as the controller's audio shortcut) |
+| **Audio** | Like the panel: the outputs and the microphones, the default one checked; tap one to switch to it; volume and mute of each (the PC shows the same banner as the controller's audio shortcut). If the PC does not answer, it says so |
 | **Apps** | One button per app the PC has; an app that is not installed gets no button. **OBS Studio**: open / close, then record, pause, stream, save replay, scenes, virtual camera. **Steam**: open / close, Big Picture (and leave it), library, store, friends, downloads, Steam settings. **PC settings**: open Settings, or its Sound, Display, Bluetooth, Wi-Fi, Windows Update or Power page; lock, sleep, restart, shut down (the last three ask first) |
 
 Phone and PC meet through a relay at xdeck.skale.club (a Cloudflare Worker, `remote/`), so the phone
@@ -277,7 +277,8 @@ pelo próprio controle.
   app (Android: **Install the app**; iPhone: **Compartilhar › Adicionar à Tela de Início**). Com o celular no
   mesmo Wi-Fi do PC, toque em **Find my PC**: aparece um código de 6 dígitos na tela do PC; digite no
   app, uma vez só. Depois ele conecta sozinho, de qualquer lugar (até no 4G). O celular vira touchpad,
-  teclado, teclas de mídia, troca de saída de áudio e volume, e a aba **Apps**: um botão para cada app
+  teclado, teclas de mídia, a aba **Audio** (saídas e microfones, como no painel: troca, volume e
+  mudo de cada um) e a aba **Apps**: um botão para cada app
   instalado no PC (OBS Studio, Steam, Configurações), com abrir / fechar e as funções de cada um
   (gravar e cenas no OBS; Big Picture, biblioteca e loja na Steam; páginas das Configurações,
   bloquear, suspender, reiniciar e desligar o PC). App que não está instalado não aparece. Tudo vai criptografado

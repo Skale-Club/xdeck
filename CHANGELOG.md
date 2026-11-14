@@ -11,7 +11,15 @@
   - **PC settings**: open Settings or its Sound, Display, Bluetooth, Wi-Fi, Windows Update or Power
     page; lock, sleep, restart and shut down the PC (sleep, restart and shut down ask first).
   A PC on an older Xdeck shows "Update Xdeck on the PC" there.
-- **Phone audio**: switching the output or moving the volume on the phone shows the same banner on
+- **Phone audio, fixed**: the Audio tab stayed empty (no outputs, volume "–") and its volume did
+  nothing, because everything the PC did for it waited in the tray's UI queue. The phone's audio
+  requests now run on their own audio thread and the answers go out from a sender thread, so they no
+  longer depend on the UI thread. If the PC still does not answer, the tab says so
+  ("Update Xdeck on the PC") instead of staying empty.
+- **Microphones on the phone**: the Audio tab lists the outputs and the microphones like the panel,
+  with an icon for each (speaker, headphones, TV / monitor, mic); tap one to make it the default;
+  volume and mute for both.
+- Switching the output or microphone, or moving a volume, on the phone shows the same banner on
   the PC as the controller's audio shortcut. The phone follows changes made on the PC (panel,
   controller, Windows) within 2 seconds, and the apps' open / closed state too. Replies to the phone
   go out from their own thread, so the PC's interface never waits on the network; what goes wrong

@@ -68,7 +68,12 @@
   .outs { display: flex; flex-direction: column; gap: 8px; }
   .out { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 14px; border-radius: 12px; background: var(--card); }
   .out.on { box-shadow: inset 0 0 0 2px var(--accent); }
-  .out .nm { flex: 1; font-weight: 600; }
+  .out .nm { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .out svg { width: 22px; height: 22px; flex: none; color: var(--dim); }
+  .out.on svg { color: var(--text); }
+  .wait { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: var(--card);
+    color: var(--dim); font-size: 13.5px; text-align: center; margin-top: 6px; }
+  .wait .btn { flex: none; width: 100%; background: var(--hot); }
   .out .ck { color: var(--accent); font-weight: 700; visibility: hidden; }
   .out.on .ck { visibility: visible; }
   .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); }
@@ -217,14 +222,21 @@
   </section>
 
   <section id="tab-audio">
-    <div class="lbl">Volume</div>
+    <div class="wait" id="audioWait" hidden><span id="audioWaitText"></span><button class="btn small" id="audioRetry">Try again</button></div>
+    <div class="lbl">Output</div>
     <div class="vol">
-      <button id="muteBtn" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor"/><path id="muteWaves" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-      <input type="range" id="vol" min="0" max="100" step="1">
+      <button id="muteBtn" aria-label="Mute the output"><svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor"/><path id="muteWaves" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path id="muteSlash" d="M15 9l6 6M21 9l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"/></svg></button>
+      <input type="range" id="vol" min="0" max="100" step="1" value="0" aria-label="Output volume" disabled>
       <span class="pct" id="volPct">–</span>
     </div>
-    <div class="lbl">Audio output</div>
     <div class="outs" id="outs"></div>
+    <div class="lbl">Microphone</div>
+    <div class="vol">
+      <button id="micMuteBtn" aria-label="Mute the microphone"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path id="micSlash" d="M4 4l16 16" stroke="var(--red)" stroke-width="2.2" stroke-linecap="round" style="display:none"/></svg></button>
+      <input type="range" id="micVol" min="0" max="100" step="1" value="0" aria-label="Microphone volume" disabled>
+      <span class="pct" id="micPct">–</span>
+    </div>
+    <div class="outs" id="mics"></div>
   </section>
 
   <section id="tab-apps">
@@ -329,6 +341,7 @@ async function connect() {
   $("pcName").textContent = current.pcName || "PC";
   try { keys = await deriveKeys(current); } catch (e) { setStatus("bad", "Pair again"); showPair(true); return; }
   setStatus("", "Connecting…");
+  gotState = false;
   const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/phone?pc=${encodeURIComponent(current.pc)}&phone=${encodeURIComponent(current.phone)}&token=${encodeURIComponent(current.token)}`;
   const s = new WebSocket(url);
   ws = s;
@@ -341,7 +354,7 @@ async function connect() {
       if (m.t === "pc") {
         if (m.name) { current.pcName = m.name; $("pcName").textContent = m.name; save(pcs); }
         setStatus(m.online ? "on" : "bad", m.online ? "Connected" : "PC offline");
-        if (m.online) send({ t: "state" });
+        if (m.online) askState();
       }
       return;
     }
@@ -366,7 +379,7 @@ function send(m) {
   chain = chain.then(async () => { const d = await seal(m); if (s.readyState === 1) s.send(d); }).catch(() => {});
 }
 
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (!ws) connect(); else send({ t: "state" }); } });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (!ws) connect(); else askState(); } });
 window.addEventListener("online", () => { if (!ws) connect(); });
 
 // ------------------------------------------------------------ pairing
@@ -568,7 +581,7 @@ $("tabs").addEventListener("click", (e) => {
   if (!b) return;
   document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
   document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", s.id === "tab-" + b.dataset.tab));
-  if (b.dataset.tab === "audio" || b.dataset.tab === "apps") send({ t: "state" });
+  if (b.dataset.tab === "audio" || b.dataset.tab === "apps") askState();
 });
 
 // ------------------------------------------------------------ touchpad
@@ -694,33 +707,84 @@ document.querySelectorAll("[data-combo]").forEach((b) => b.addEventListener("cli
 }));
 
 // ------------------------------------------------------------ audio
-const $outs = $("outs"), $vol = $("vol"), $volPct = $("volPct");
-let sliding = false, volTimer = 0;
+// Like the PC panel: the outputs and the microphones, the default one checked, with its volume and
+// mute. The PC sends it all again when anything changes there. If the PC does not answer, say so
+// instead of showing an empty list.
+const GLYPH = {
+  speaker: '<svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  headphones: '<svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="13.5" width="5" height="7" rx="2" fill="currentColor"/><rect x="16" y="13.5" width="5" height="7" rx="2" fill="currentColor"/></svg>',
+  monitor: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="12.5" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 20.5h8M12 16.5v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+// the same guess as Audio.Glyph on the PC
+function glyph(name) {
+  const n = String(name).toLowerCase();
+  if (/airpods|air pods|pulse|head/.test(n)) return GLYPH.headphones;
+  if (/\btv\b|monitor|display/.test(n)) return GLYPH.monitor;
+  return GLYPH.speaker;
+}
+let gotState = false, waitTimer = 0;
+function askState() {
+  send({ t: "state" });
+  clearTimeout(waitTimer);
+  if (gotState) return;
+  waitTimer = setTimeout(() => {
+    if (gotState || !ws || ws.readyState !== 1) return;
+    $("audioWaitText").textContent = "The PC is not answering. Update Xdeck on the PC (tray menu › Check for updates), then try again.";
+    $("audioWait").hidden = false;
+    if (!appsKnown) $("appBody").innerHTML = `<p class="note">The PC is not answering. Update Xdeck on the PC, then try again.</p>`;
+  }, 6000);
+}
+$("audioRetry").addEventListener("click", () => { $("audioWait").hidden = true; askState(); });
+
+function device(kind) {
+  const box = $(kind === "mic" ? "mics" : "outs");
+  const ctl = {
+    box, range: $(kind === "mic" ? "micVol" : "vol"), pct: $(kind === "mic" ? "micPct" : "volPct"),
+    sliding: false, timer: 0, msg: kind === "mic" ? "micvol" : "vol",
+    show(list, def, vol, mute, known) {
+      if (!known) { box.innerHTML = `<p class="note">Update Xdeck on the PC to see the microphones here.</p>`; return; }
+      box.innerHTML = list.map((o) =>
+        `<div class="out${o.id === def ? " on" : ""}" data-id="${esc(o.id)}">${kind === "mic" ? GLYPH.mic : glyph(o.name)}<span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
+        `<p class="note">${kind === "mic" ? "No microphone connected" : "No audio output connected"}</p>`;
+      if (!ctl.sliding) { ctl.range.value = Math.round((vol || 0) * 100); ctl.pct.textContent = def ? (mute ? "Muted" : ctl.range.value + "%") : "–"; }
+      ctl.range.disabled = !def;
+    },
+  };
+  box.addEventListener("click", (e) => {
+    const o = e.target.closest(".out");
+    if (!o) return;
+    box.querySelectorAll(".out").forEach((x) => x.classList.toggle("on", x === o));
+    send({ t: kind === "mic" ? "mic" : "out", id: o.dataset.id });
+    vibrate(10);
+  });
+  ctl.range.addEventListener("input", () => {
+    ctl.sliding = true;
+    ctl.pct.textContent = ctl.range.value + "%";
+    clearTimeout(ctl.timer);
+    ctl.timer = setTimeout(() => send({ t: ctl.msg, v: ctl.range.value / 100 }), 40);
+  });
+  ctl.range.addEventListener("change", () => { ctl.sliding = false; clearTimeout(ctl.timer); send({ t: ctl.msg, v: ctl.range.value / 100 }); });
+  return ctl;
+}
+const outs = device("out"), mics = device("mic");
+$("muteBtn").addEventListener("click", () => { send({ t: "mute" }); vibrate(10); });
+$("micMuteBtn").addEventListener("click", () => { send({ t: "micmute" }); vibrate(10); });
+
 function onState(m) {
   if (m.t !== "state") return;
+  gotState = true;
+  clearTimeout(waitTimer);
+  $("audioWait").hidden = true;
   apps = Array.isArray(m.apps) ? m.apps : [];
   appsKnown = Array.isArray(m.apps);
   renderApps();
-  $outs.innerHTML = (m.outs || []).map((o) =>
-    `<div class="out${o.id === m.def ? " on" : ""}" data-id="${esc(o.id)}"><span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
-    `<p class="note">No audio output connected</p>`;
-  if (!sliding) { $vol.value = Math.round((m.vol || 0) * 100); $volPct.textContent = m.mute ? "Muted" : $vol.value + "%"; }
-  $("muteWaves").style.opacity = m.mute ? .25 : 1;
+  outs.show(m.outs || [], m.def, m.vol, m.mute, true);
+  mics.show(m.mics || [], m.defMic, m.micVol, m.micMute, Array.isArray(m.mics));
+  $("muteWaves").style.display = m.mute ? "none" : "";
+  $("muteSlash").style.display = m.mute ? "" : "none";
+  $("micSlash").style.display = m.micMute ? "" : "none";
 }
-$outs.addEventListener("click", (e) => {
-  const o = e.target.closest(".out");
-  if (!o) return;
-  document.querySelectorAll(".out").forEach((x) => x.classList.toggle("on", x === o));
-  send({ t: "out", id: o.dataset.id });
-});
-$vol.addEventListener("input", () => {
-  sliding = true;
-  $volPct.textContent = $vol.value + "%";
-  clearTimeout(volTimer);
-  volTimer = setTimeout(() => send({ t: "vol", v: $vol.value / 100 }), 40);
-});
-$vol.addEventListener("change", () => { sliding = false; send({ t: "vol", v: $vol.value / 100 }); });
-$("muteBtn").addEventListener("click", () => send({ t: "mute" }));
 
 // ------------------------------------------------------------ apps
 // One button per app the PC has (the PC lists them, with whether each is running: an app that is
