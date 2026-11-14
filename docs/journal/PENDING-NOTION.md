@@ -405,7 +405,7 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Date: 2026-11-14
 - Type: Integration
 - Area: Phone remote (PC side + PWA)
-- Status: In dev and installed on the Surface; public release and relay deploy pending
+- Status: In dev, installed on the Surface, relay and phone app deployed; signed public release pending
 - Summary: Fast-forwarded dev to ccr-c48f921e-b3t4rf (Apps tab, phone audio thread, microphones,
   "PC not answering", remote.log) and pushed it. Built with build.ps1 -Install (VERSION still
   0.7.6, 9 s) and installed for the current user on VANILDO-TABLET; the installed exe matches the
