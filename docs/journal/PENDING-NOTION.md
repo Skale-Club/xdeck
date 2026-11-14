@@ -418,3 +418,29 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Repo / Branch: Skale-Club/xdeck / dev
 - Tests: Compiled on Windows (csc, one pre-existing CS0108 warning). Not yet exercised from the
   phone; remote.log not created yet (it is written on the first phone request).
+
+## 2026-11-14 — Xdeck 0.7.7 released: tray icon hint + phone remote apps and audio
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-14
+- Type: Release
+- Area: Tray / panel UI; phone remote (PC side)
+- Status: Done (public signed release v0.7.7; installed copies update within six hours)
+- Summary: On Windows 11 25H2 (build 26200) the tray icon stayed under ^ although Xdeck had written
+  IsPromoted=1; Explorer ignored it, a registry toggle and an Xdeck restart did not help, and the
+  Settings switch showed "on" without effect. Dragging the icon out worked and did not change the
+  registry. New TrayPlace class asks the taskbar through UI Automation (NotifyItemIcon buttons under
+  Shell_TrayWnd, named after the tooltip) each time the panel opens; while the icon is hidden the
+  panel shows "Keep Xdeck on the taskbar" with Show me (invokes ^) and Don't show again
+  (tray-hint-off flag in Data). TrayPromote kept (harmless). Released together with the phone
+  remote work already on dev (Apps tab, phone audio thread, microphones). feat/tray-hint and
+  ccr-c48f921e-b3t4rf merged and deleted; main = dev = v0.7.7 (db6c56b).
+- Agent: Claude Code (Opus 5.5, no subagents)
+- Repo / Branch: Skale-Club/xdeck / main
+- Tests: 17 Node panel tests passed; node --check; csc build (one pre-existing CS0108 warning);
+  build copy run on the desktop showed the hint while its icon was hidden; installed copy kept its
+  dragged icon on the taskbar after a restart. Release run outside the app context via WMI;
+  assets XdeckSetup.exe, Xdeck-0.7.7.zip and latest.json present, and the downloaded ZIP passed
+  Updater.Verify against the manifest signature (a tampered input failed). Show me / Don't show
+  again were not clicked in the real panel.
