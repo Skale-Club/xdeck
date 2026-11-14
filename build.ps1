@@ -40,6 +40,8 @@ Set-Content "$tmp\AssemblyInfo.cs" -Encoding utf8 -Value @(
 # the controller silhouettes (tools\Render-PadIcons.ps1 makes them): the panel shows them from
 # ui\pads\model, the banner draws them from inside the exe as pad-<kind>.png
 $resources = Get-ChildItem (Join-Path $root 'ui\pads\model') -Filter '*.png' | ForEach-Object { "/resource:$($_.FullName),pad-$($_.Name)" }
+# the makers' logos (tools\Render-BrandLogos.ps1 makes them): the banner draws them as brand-<brand>.png
+$resources += Get-ChildItem (Join-Path $root 'ui\brands\mask') -Filter '*.png' | ForEach-Object { "/resource:$($_.FullName),brand-$($_.Name)" }
 
 & $csc /nologo /target:winexe /platform:x64 /codepage:65001 /optimize+ $resources `
     "/win32manifest:$root\src\app.manifest" "/win32icon:$tmp\Xdeck.ico" `
