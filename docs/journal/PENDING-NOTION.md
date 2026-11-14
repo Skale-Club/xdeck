@@ -350,3 +350,27 @@ Estimated duration: 20 minutes; actual approximately 22 minutes including the re
 shutdowns and memory-constrained tool execution. All 16 focused tests passed. The owner can reopen
 the PWA to load the new screen and use desktop Settings > Generate access code without reinstalling
 the app or clearing existing paired PCs.
+
+## 2026-11-14 — Xdeck 0.7.6: controller volume, quiet OBS shortcuts, white banner icons
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-14
+- Type: Feature + Fix
+- Area: Controller input, OBS, banners
+- Status: Released (v0.7.6 on GitHub, signed; installed copies update within six hours)
+- Summary: Audio shortcut (L1 + D-pad right) now maps right stick left / right to the output and
+  up / down to the volume (5% steps, repeats while held, volume banner). OBS shortcuts are ignored
+  silently while OBS Studio is closed (R1 + L3 / R1 + R3 fired by chance in games kept popping
+  error banners); repeated OBS errors show once a minute; the phone remote still says "OBS is not
+  open". Banner icons are white instead of the accent blue. Also ships the uncommitted 0.7.6 brand
+  logo work and the unreleased 0.7.5 changes.
+- Agent: Claude Code
+- Model: claude-opus-5-5
+- Repo / Branch: Skale-Club/xdeck / feat/pad-volume-obs-quiet -> dev -> main
+- Commits / PR: 3c07763, merge 1649d90; release https://github.com/Skale-Club/xdeck/releases/tag/v0.7.6
+- Tests: 16 Node tests passed; node --check ui/app.js and git diff --check passed; `--banners`
+  sheet checked visually; release ZIP verified against the embedded public key. The stick combo
+  itself was not exercised with a physical controller.
+
+Ficou fora do dev: nothing.
