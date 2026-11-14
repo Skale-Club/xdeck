@@ -411,8 +411,9 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
   0.7.6, 9 s) and installed for the current user on VANILDO-TABLET; the installed exe matches the
   build and Xdeck restarted. The signed public release could not run here: the update signing key
   is not on this Surface (same blocker as 0.7.5), so it waits for the desktop, with VERSION bumped
-  to 0.7.7 there. `wrangler deploy` failed: the Cloudflare OAuth refresh returned 400, so the
-  owner must run `wrangler login` before deploying the relay and the phone app.
+  to 0.7.7 there. The relay and phone app were deployed with `wrangler deploy` (version
+  3f44e824, xdeck.skale.club, cache xdeck-remote-v5) after the owner's `wrangler login`; the agent
+  shell kept reading a stale OAuth token, so the deploy ran in the owner's terminal.
 - Agent: Claude Code (Opus 5.5, no subagents; machine in critical memory mode)
 - Repo / Branch: Skale-Club/xdeck / dev
 - Tests: Compiled on Windows (csc, one pre-existing CS0108 warning). Not yet exercised from the
