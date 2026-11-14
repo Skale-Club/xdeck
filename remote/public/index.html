@@ -77,7 +77,22 @@
   .out .ck { color: var(--accent); font-weight: 700; visibility: hidden; }
   .out.on .ck { visibility: visible; }
   .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); }
-  .vol input { flex: 1; accent-color: var(--accent); height: 32px; }
+  /* Volume slider, Material 3 style (same as the PC panel): a thick rounded track, the filled part
+     in the accent, a gap, a slim upright handle, a dot at the end. --p is set by device() below. */
+  .vol input { --h: 16px; --knob: 40px; --gap: 6px; --on: var(--accent); --p: 0%;
+    flex: 1; height: 44px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
+  .vol.muted input { --on: #5a5a60; }
+  .vol input:disabled { opacity: .4; }
+  .vol input::-webkit-slider-runnable-track { height: var(--h); border-radius: calc(var(--h) / 2);
+    background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2.5px, transparent 3px),
+      linear-gradient(90deg, var(--on) 0 calc(var(--p) - var(--gap)), transparent 0 calc(var(--p) + var(--gap)), var(--off) 0); }
+  .vol input::-moz-range-track { height: var(--h); border-radius: calc(var(--h) / 2);
+    background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2.5px, transparent 3px),
+      linear-gradient(90deg, var(--on) 0 calc(var(--p) - var(--gap)), transparent 0 calc(var(--p) + var(--gap)), var(--off) 0); }
+  .vol input::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: var(--knob);
+    margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 2px; background: var(--text); transition: width .12s; }
+  .vol input::-moz-range-thumb { width: 4px; height: var(--knob); border: 0; border-radius: 2px; background: var(--text); }
+  .vol input:active::-webkit-slider-thumb { width: 2px; }
   .vol .pct { width: 52px; text-align: right; color: var(--dim); font-weight: 600; font-size: 13px; }
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
   .vol svg { width: 24px; height: 24px; }
@@ -742,13 +757,15 @@ function device(kind) {
   const ctl = {
     box, range: $(kind === "mic" ? "micVol" : "vol"), pct: $(kind === "mic" ? "micPct" : "volPct"),
     sliding: false, timer: 0, msg: kind === "mic" ? "micvol" : "vol",
+    fill() { ctl.range.style.setProperty("--p", ctl.range.value + "%"); },   // the slider's filled part
     show(list, def, vol, mute, known) {
       if (!known) { box.innerHTML = `<p class="note">Update Xdeck on the PC to see the microphones here.</p>`; return; }
       box.innerHTML = list.map((o) =>
         `<div class="out${o.id === def ? " on" : ""}" data-id="${esc(o.id)}">${kind === "mic" ? GLYPH.mic : glyph(o.name)}<span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
         `<p class="note">${kind === "mic" ? "No microphone connected" : "No audio output connected"}</p>`;
-      if (!ctl.sliding) { ctl.range.value = Math.round((vol || 0) * 100); ctl.pct.textContent = def ? (mute ? "Muted" : ctl.range.value + "%") : "–"; }
+      if (!ctl.sliding) { ctl.range.value = Math.round((vol || 0) * 100); ctl.pct.textContent = def ? (mute ? "Muted" : ctl.range.value + "%") : "–"; ctl.fill(); }
       ctl.range.disabled = !def;
+      ctl.range.parentElement.classList.toggle("muted", !!(def && mute));
     },
   };
   box.addEventListener("click", (e) => {
@@ -761,6 +778,7 @@ function device(kind) {
   ctl.range.addEventListener("input", () => {
     ctl.sliding = true;
     ctl.pct.textContent = ctl.range.value + "%";
+    ctl.fill();
     clearTimeout(ctl.timer);
     ctl.timer = setTimeout(() => send({ t: ctl.msg, v: ctl.range.value / 100 }), 40);
   });

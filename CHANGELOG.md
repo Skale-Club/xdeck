@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.8 — 2026-11-14
+
+- **New volume sliders**, in the panel and in the phone remote: a thick rounded track, the filled
+  part in the accent color, a slim upright handle with a small gap around it, and a dot at the end
+  (the Material 3 style). Grey while muted. In the panel the handle grows under the mouse and thins
+  while dragged; on the phone the slider is taller for the thumb.
+
 ## 0.7.7 — 2026-11-14
 
 - **Apps on the phone remote** (the tab that was OBS): one button per app the PC has, and only for

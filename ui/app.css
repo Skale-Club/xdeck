@@ -65,11 +65,19 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .vol.muted .mute { color: var(--red); }
 .vol .pct { width: 44px; text-align: right; color: var(--dim); font: 600 12px "Segoe UI", sans-serif; flex: none; }
 .vol.muted .pct { color: var(--red); }
-.vol input[type=range] { flex: 1; height: 18px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
-.vol input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) var(--p), var(--off) var(--p)); }
-.vol.muted input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, var(--faint) var(--p), var(--off) var(--p)); }
-.vol input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #f0f0f3; box-shadow: 0 0 0 3px var(--card), 0 1px 3px rgba(0,0,0,.5); }
-.vol input[type=range]:hover::-webkit-slider-thumb { background: #fff; }
+/* Volume slider, Material 3 style: a thick rounded track, the filled part in the accent, a gap,
+   a slim upright handle, and a dot marking the end of the empty part. --p (0-100%) comes from
+   app.js. The handle's center is at most 2px off --p (half its width), well inside the gap. */
+.vol input[type=range] { --h: 12px; --knob: 24px; --gap: 5px; --on: var(--accent);
+  flex: 1; height: var(--knob); margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.vol.muted input[type=range] { --on: var(--faint); }
+.vol input[type=range]::-webkit-slider-runnable-track { height: var(--h); border-radius: calc(var(--h) / 2);
+  background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2px, transparent 2.5px),
+    linear-gradient(90deg, var(--on) 0 calc(var(--p) - var(--gap)), transparent 0 calc(var(--p) + var(--gap)), var(--off) 0); }
+.vol input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: var(--knob);
+  margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 2px; background: var(--text); transition: width .12s, height .12s, margin .12s; }
+.vol input[type=range]:hover::-webkit-slider-thumb { height: calc(var(--knob) + 2px); margin-top: calc((var(--h) - var(--knob) - 2px) / 2); }
+.vol input[type=range]:active::-webkit-slider-thumb { width: 2px; }
 .row.item { height: 38px; margin: 6px 0 0 10px; padding: 0 14px 0 8px; background: var(--sub); }
 .row.item .ico { width: 40px; height: 17px; color: var(--dim); }
 .row.item .ico svg { width: 17px; height: 17px; }
