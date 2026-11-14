@@ -444,3 +444,25 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
   assets XdeckSetup.exe, Xdeck-0.7.7.zip and latest.json present, and the downloaded ZIP passed
   Updater.Verify against the manifest signature (a tampered input failed). Show me / Don't show
   again were not clicked in the real panel.
+
+## 2026-11-14 — Xdeck 0.7.8 released: Material 3 volume sliders (panel + phone remote)
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-14
+- Type: Release
+- Area: Panel UI; phone remote PWA
+- Status: Done (signed release v0.7.8; phone app deployed)
+- Summary: Replaced the volume sliders with a Material 3 style: thick rounded track (12px panel,
+  16px phone), accent fill ending in a gap, slim upright handle, end dot, grey while muted. The
+  phone app now sets --p while sliding and on each state update, marks the row muted, and its
+  service worker cache moved to xdeck-remote-v6. Released as v0.7.8 (3e360fa) and deployed the
+  relay + phone app with wrangler (version e69043c5, xdeck.skale.club). Both the release and the
+  wrangler deploy ran outside the Claude app context through WMI, so the real signing key and
+  wrangler login were used; the deploy worked from the agent this time.
+- Agent: Claude Code (Opus 5.5, no subagents)
+- Repo / Branch: Skale-Club/xdeck / main
+- Tests: 17 Node panel tests; node --check; panel and phone Audio tab checked visually in the
+  in-app browser (20%, 85%, muted; phone --p follows input). Release assets present and the ZIP
+  passed Updater.Verify. Production serves sw.js with xdeck-remote-v6 and the new slider CSS.
+  Not dragged with a real mouse or tried on a real phone.
