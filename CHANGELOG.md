@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.7 — 2026-11-14
 
 - **Apps on the phone remote** (the tab that was OBS): one button per app the PC has, and only for
   the apps installed there. Under it, the app's state (open / closed) with Open and Close, and its
