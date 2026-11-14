@@ -47,6 +47,7 @@ $resources += Get-ChildItem (Join-Path $root 'ui\brands\mask') -Filter '*.png' |
     "/win32manifest:$root\src\app.manifest" "/win32icon:$tmp\Xdeck.ico" `
     "/r:$lib\Microsoft.Web.WebView2.Core.dll" "/r:$lib\Microsoft.Web.WebView2.WinForms.dll" /r:System.Web.Extensions.dll `
     /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /r:System.Security.dll /r:System.Core.dll `
+    "/lib:$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\WPF" /r:UIAutomationClient.dll /r:UIAutomationTypes.dll /r:WindowsBase.dll `
     "/out:$out\Xdeck.exe" (Join-Path $root 'src\Xdeck.cs') "$tmp\AssemblyInfo.cs"
 if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
 Copy-Item "$lib\*.dll" $out

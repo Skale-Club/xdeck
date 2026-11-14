@@ -36,6 +36,7 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
 using System.Web.Script.Serialization;
+using System.Windows.Automation;
 using Microsoft.Web.WebView2.Core;
 
 // Portable layout: everything Xdeck writes lives in Data\ next to the exe.
@@ -615,6 +616,62 @@ static class TrayPromote
             }
         }
         catch { }
+    }
+}
+
+// Whether the icon really is on the taskbar. On Windows 11 25H2 Explorer ignores IsPromoted
+// (even the Settings switch did not move the icon); only dragging it out of ^ does. So ask the
+// taskbar itself through UI Automation: its visible notification icons are NotifyItemIcon
+// buttons named after their tooltips. The panel shows a hint while the icon is hidden, until the
+// user drags it out or dismisses the hint. Run off the UI thread: UIA calls back into our windows.
+static class TrayPlace
+{
+    public static volatile string Tip = "Xdeck";   // the tray tooltip, which is the icon's name there
+    static string Flag { get { return Path.Combine(AppPaths.Data, "tray-hint-off"); } }
+
+    public static bool Dismissed { get { return File.Exists(Flag); } }
+    public static void Dismiss() { try { File.WriteAllText(Flag, DateTime.Now.ToString("o")); } catch { } }
+
+    // true: on the taskbar; false: under ^; null: can't tell (no ^ button, older Windows, an error)
+    public static bool? OnTaskbar()
+    {
+        try
+        {
+            AutomationElement bar = Taskbar();
+            if (bar == null || Chevron(bar) == null) return null;
+            string tip = Tip.Trim();
+            foreach (AutomationElement e in bar.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "NotifyItemIcon")))
+                if (e.Current.Name.Trim() == tip) return true;
+            return false;
+        }
+        catch { return null; }
+    }
+
+    // Open the ^ flyout, so the user sees the icon to drag.
+    public static void OpenOverflow()
+    {
+        try
+        {
+            AutomationElement bar = Taskbar(), chevron = bar == null ? null : Chevron(bar);
+            object p;
+            if (chevron != null && chevron.TryGetCurrentPattern(InvokePattern.Pattern, out p)) ((InvokePattern)p).Invoke();
+        }
+        catch { }
+    }
+
+    static AutomationElement Taskbar()
+    {
+        return AutomationElement.RootElement.FindFirst(TreeScope.Children,
+            new PropertyCondition(AutomationElement.ClassNameProperty, "Shell_TrayWnd"));
+    }
+
+    // the ^ button ("Show Hidden Icons", localized): the only plain button among the tray's own
+    static AutomationElement Chevron(AutomationElement bar)
+    {
+        return bar.FindFirst(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ClassNameProperty, "SystemTray.NormalButton"),
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemTrayIcon")));
     }
 }
 
@@ -4675,7 +4732,7 @@ class WebPanel : Form
             IntPtr fg = GetForegroundWindow();
             returnTo = fromPad && fg != Handle ? fg : IntPtr.Zero;
         }
-        if (ready) { Post(ShowMessage()); SendState(); }
+        if (ready) { Post(ShowMessage()); SendState(); CheckTray(); }
         Place();
         if (!Visible) Show();
         if (fromPad) ForceForeground(); else Activate();
@@ -4697,6 +4754,24 @@ class WebPanel : Form
         // give the focus back to the game (or whatever was in front), so it gets its input again
         if (hadFocus && returnTo != IntPtr.Zero && IsWindow(returnTo)) SetForegroundWindow(returnTo);
         returnTo = IntPtr.Zero;
+    }
+
+    // Ask the taskbar whether our icon is out of ^ (TrayPlace), off the UI thread, and tell the page.
+    void CheckTray()
+    {
+        if (TrayPlace.Dismissed) return;
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            bool hidden = TrayPlace.OnTaskbar() == false;
+            try
+            {
+                if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate
+                {
+                    if (ready) Post(new Dictionary<string, object> { { "type", "tray" }, { "hidden", hidden } });
+                });
+            }
+            catch { }
+        });
     }
 
     Dictionary<string, object> ShowMessage()
@@ -4762,7 +4837,14 @@ class WebPanel : Form
                 ready = true;
                 SendState();
                 if (prewarming) { prewarming = false; Hide(); }
-                else if (wantShow) Post(ShowMessage());
+                else if (wantShow) { Post(ShowMessage()); CheckTray(); }
+                break;
+            case "tray-open":                                   // the hint's "Show me": open ^
+                ThreadPool.QueueUserWorkItem(delegate { TrayPlace.OpenOverflow(); });
+                break;
+            case "tray-dismiss":                                // the hint's "Don't show again"
+                TrayPlace.Dismiss();
+                Post(new Dictionary<string, object> { { "type", "tray" }, { "hidden", false } });
                 break;
             case "size":
                 float s = Scale_();
@@ -5474,6 +5556,7 @@ class XdeckApp : Form
                 parts.Add(p.Name + " " + p.Battery + "%" + (p.Charging ? " ⚡" : ""));
         string text = parts.Count == 0 ? "Xdeck" : string.Join(" · ", parts.ToArray());
         tray.Text = text.Length > 63 ? text.Substring(0, 62) + "…" : text;
+        TrayPlace.Tip = tray.Text;
     }
 
     HashSet<string> knownOut = new HashSet<string>(), knownMic = new HashSet<string>();

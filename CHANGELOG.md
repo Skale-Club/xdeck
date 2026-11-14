@@ -24,6 +24,11 @@
   controller, Windows) within 2 seconds, and the apps' open / closed state too. Replies to the phone
   go out from their own thread, so the PC's interface never waits on the network; what goes wrong
   with a phone's request is written to `remote.log` in the Xdeck data folder.
+- **The panel says when the tray icon is hidden**: Windows 11 hides new tray icons under ^ and
+  ignores the "show this icon" setting (written by Xdeck, and even its own Settings switch); only
+  dragging the icon out works. Each time the panel opens, Xdeck asks the taskbar (UI Automation)
+  whether its icon is there, and while it is not, a card explains how to drag it out, with
+  **Show me** (opens ^) and **Don't show again**. It goes away by itself once the icon is out.
 
 ## 0.7.6 — 2026-11-14
 
