@@ -397,3 +397,23 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
   end-to-end Playwright run (phone app + wrangler dev relay + Node PC stand-in): outputs listed,
   output switch and volume reached the PC, app open / OBS record / Settings page sent, shut down
   asked first. Not run on Windows.
+
+## 2026-11-14 — Phone remote fix merged to dev and installed on the Surface
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-14
+- Type: Integration
+- Area: Phone remote (PC side + PWA)
+- Status: In dev and installed on the Surface; public release and relay deploy pending
+- Summary: Fast-forwarded dev to ccr-c48f921e-b3t4rf (Apps tab, phone audio thread, microphones,
+  "PC not answering", remote.log) and pushed it. Built with build.ps1 -Install (VERSION still
+  0.7.6, 9 s) and installed for the current user on VANILDO-TABLET; the installed exe matches the
+  build and Xdeck restarted. The signed public release could not run here: the update signing key
+  is not on this Surface (same blocker as 0.7.5), so it waits for the desktop, with VERSION bumped
+  to 0.7.7 there. `wrangler deploy` failed: the Cloudflare OAuth refresh returned 400, so the
+  owner must run `wrangler login` before deploying the relay and the phone app.
+- Agent: Claude Code (Opus 5.5, no subagents; machine in critical memory mode)
+- Repo / Branch: Skale-Club/xdeck / dev
+- Tests: Compiled on Windows (csc, one pre-existing CS0108 warning). Not yet exercised from the
+  phone; remote.log not created yet (it is written on the first phone request).
