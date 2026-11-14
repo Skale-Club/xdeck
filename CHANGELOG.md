@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Apps on the phone remote** (the tab that was OBS): one button per app the PC has, and only for
+  the apps installed there. Under it, the app's state (open / closed) with Open and Close, and its
+  own buttons:
+  - **OBS Studio**: open and close it from the phone (closing is like its X, so OBS still asks
+    while it records); record, pause, stream, save replay, scenes and virtual camera once it is open.
+  - **Steam**: open / close, Big Picture (and leave it), library, store, friends, downloads, settings.
+  - **PC settings**: open Settings or its Sound, Display, Bluetooth, Wi-Fi, Windows Update or Power
+    page; lock, sleep, restart and shut down the PC (sleep, restart and shut down ask first).
+  A PC on an older Xdeck shows "Update Xdeck on the PC" there.
+- **Phone audio**: switching the output or moving the volume on the phone shows the same banner on
+  the PC as the controller's audio shortcut. The phone follows changes made on the PC (panel,
+  controller, Windows) within 2 seconds, and the apps' open / closed state too. Replies to the phone
+  go out from their own thread, so the PC's interface never waits on the network; what goes wrong
+  with a phone's request is written to `remote.log` in the Xdeck data folder.
+
 ## 0.7.6 — 2026-11-14
 
 - **Volume from the controller**: hold L1 + D-pad right (the audio shortcut) and push the right

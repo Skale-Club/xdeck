@@ -2680,6 +2680,175 @@ static class Obs
     }
 }
 
+// ---------------------------------------------------------------- apps on the phone remote
+// The phone remote's Apps tab: one button per app this PC has (OBS Studio, Steam, Windows
+// Settings), and under it the app's open / close and its own buttons. An app that is not installed
+// is not in the list, so the phone shows no button for it.
+static class Apps
+{
+    public static Action<string, string> Said;   // caption, text (from a worker thread): the banner
+
+    public class App { public string Id, Name, Exe; public bool Running; }
+
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int max);
+    [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern bool LockWorkStation();
+    [DllImport("powrprof.dll")] static extern bool SetSuspendState(bool hibernate, bool force, bool noWakeEvents);
+
+    static readonly string[] ObsProcesses = { "obs64", "obs32", "obs" };
+
+    static readonly Dictionary<string, string> SteamUrls = new Dictionary<string, string> {
+        { "bigpicture", "steam://open/bigpicture" }, { "exitbigpicture", "steam://close/bigpicture" },
+        { "library", "steam://open/games" }, { "store", "steam://store" }, { "friends", "steam://open/friends" },
+        { "downloads", "steam://open/downloads" }, { "settings", "steam://open/settings" },
+    };
+
+    static readonly Dictionary<string, string> SettingsPages = new Dictionary<string, string> {
+        { "open", "ms-settings:" }, { "sound", "ms-settings:sound" }, { "display", "ms-settings:display" },
+        { "bluetooth", "ms-settings:bluetooth" }, { "wifi", "ms-settings:network-wifi" },
+        { "update", "ms-settings:windowsupdate" }, { "power", "ms-settings:powersleep" },
+    };
+
+    // What this PC has, and whether each one is running. Settings is on every PC.
+    public static List<App> List()
+    {
+        HashSet<string> running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try { foreach (Process p in Process.GetProcesses()) { try { running.Add(p.ProcessName); } catch { } p.Dispose(); } } catch { }
+        List<App> all = new List<App>();
+        string obs = ObsExe();
+        if (obs != null) all.Add(new App { Id = "obs", Name = "OBS Studio", Exe = obs, Running = Array.Exists(ObsProcesses, running.Contains) });
+        string steam = SteamExe();
+        if (steam != null) all.Add(new App { Id = "steam", Name = "Steam", Exe = steam, Running = running.Contains("steam") });
+        all.Add(new App { Id = "settings", Name = "Settings", Running = running.Contains("SystemSettings") });
+        return all;
+    }
+
+    // OBS's installer keeps its folder in HKLM\SOFTWARE\OBS Studio (the default value).
+    static string ObsExe()
+    {
+        List<string> dirs = new List<string>();
+        foreach (RegistryView view in new RegistryView[] { RegistryView.Registry64, RegistryView.Registry32 })
+            try
+            {
+                using (RegistryKey b = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view))
+                using (RegistryKey k = b.OpenSubKey(@"SOFTWARE\OBS Studio"))
+                {
+                    string d = k == null ? null : k.GetValue("") as string;
+                    if (!string.IsNullOrEmpty(d)) dirs.Add(d);
+                }
+            }
+            catch { }
+        dirs.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "obs-studio"));
+        foreach (string d in dirs)
+            try { string exe = Path.Combine(d, @"bin\64bit\obs64.exe"); if (File.Exists(exe)) return exe; } catch { }
+        return null;
+    }
+
+    // Steam keeps its exe in HKCU\Software\Valve\Steam (SteamExe, with forward slashes).
+    static string SteamExe()
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
+            {
+                string exe = k == null ? null : k.GetValue("SteamExe") as string;
+                if (!string.IsNullOrEmpty(exe)) { exe = exe.Replace('/', '\\'); if (File.Exists(exe)) return exe; }
+            }
+        }
+        catch { }
+        string guess = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Steam\steam.exe");
+        return File.Exists(guess) ? guess : null;
+    }
+
+    // From the phone (a worker thread): app is obs / steam / settings, a what to do with it.
+    public static void Run(string app, string a)
+    {
+        App x = List().Find(delegate (App p) { return p.Id == app; });
+        if (x == null || a == null) return;
+        try
+        {
+            switch (app)
+            {
+                case "obs":
+                    if (a == "open" && !x.Running) { Start(x.Exe, null); Say(x.Name, "Opening"); }
+                    else if (a == "close" && x.Running) { CloseObs(); Say(x.Name, "Closing"); }
+                    break;
+                case "steam":
+                    if (a == "open") { Start(x.Exe, null); if (!x.Running) Say(x.Name, "Opening"); }   // running: brings it up
+                    else if (a == "close") { if (x.Running) { Start(x.Exe, "-shutdown"); Say(x.Name, "Closing"); } }
+                    else { string url; if (SteamUrls.TryGetValue(a, out url)) Shell(url); }
+                    break;
+                case "settings":
+                    {
+                        string url;
+                        if (SettingsPages.TryGetValue(a, out url)) Shell(url);
+                        else if (a == "close") Kill("SystemSettings");
+                        else if (a == "lock") LockWorkStation();
+                        else if (a == "sleep") SetSuspendState(false, false, false);
+                        else if (a == "restart") Start("shutdown.exe", "/r /t 0");
+                        else if (a == "shutdown") Start("shutdown.exe", "/s /t 0");
+                        break;
+                    }
+            }
+        }
+        catch (Exception e) { Say(x.Name, "Error: " + e.Message); }
+    }
+
+    static void Say(string caption, string text) { Action<string, string> s = Said; if (s != null) s(caption, text); }
+
+    static void Start(string exe, string args)
+    {
+        ProcessStartInfo i = new ProcessStartInfo(exe);
+        if (args != null) i.Arguments = args;
+        string dir = Path.GetDirectoryName(exe);
+        if (!string.IsNullOrEmpty(dir)) i.WorkingDirectory = dir;   // OBS finds its files from its own folder
+        i.UseShellExecute = true;
+        if (args != null && exe == "shutdown.exe") i.WindowStyle = ProcessWindowStyle.Hidden;
+        using (Process.Start(i)) { }
+    }
+
+    static void Shell(string url)
+    {
+        using (Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })) { }
+    }
+
+    static void Kill(string name)
+    {
+        Process[] ps = null;
+        try { ps = Process.GetProcessesByName(name); foreach (Process p in ps) try { p.Kill(); } catch { } }
+        finally { if (ps != null) foreach (Process p in ps) p.Dispose(); }
+    }
+
+    // Like its window's X: OBS can still ask first (while it records or streams). Only its main
+    // window ("OBS 30.2.3 - Profile: ..."), also when it sits in the tray; never Qt's hidden ones.
+    static void CloseObs()
+    {
+        HashSet<uint> pids = new HashSet<uint>();
+        foreach (string n in ObsProcesses)
+        {
+            Process[] ps = null;
+            try { ps = Process.GetProcessesByName(n); foreach (Process p in ps) pids.Add((uint)p.Id); }
+            catch { }
+            finally { if (ps != null) foreach (Process p in ps) p.Dispose(); }
+        }
+        if (pids.Count == 0) return;
+        EnumWindows(delegate (IntPtr h, IntPtr l)
+        {
+            uint pid;
+            GetWindowThreadProcessId(h, out pid);
+            if (!pids.Contains(pid) || GetWindow(h, 4) != IntPtr.Zero) return true;   // 4 = GW_OWNER
+            StringBuilder t = new StringBuilder(256);
+            GetWindowText(h, t, t.Capacity);
+            if (t.ToString().StartsWith("OBS ", StringComparison.Ordinal)) PostMessage(h, 0x10, IntPtr.Zero, IntPtr.Zero);   // WM_CLOSE
+            return true;
+        }, IntPtr.Zero);
+    }
+}
+
 // Mouse and keyboard events for the controller mouse (PadMouse). Windows does not let a normal app
 // send input to a window that runs as administrator, so those ignore it.
 static class Inject
@@ -2758,7 +2927,8 @@ static class Inject
 
 // ---------------------------------------------------------------- phone remote
 // Like Unified Remote: the Xdeck Remote app (https://xdeck.skale.club, installable on Android and
-// iPhone) makes a phone a touchpad, keyboard, media keys, audio output switch and OBS buttons.
+// iPhone) makes a phone a touchpad, keyboard, media keys, audio output switch, and buttons for the
+// apps this PC has (OBS Studio, Steam, Windows Settings: Apps).
 // Turned on in the panel, Xdeck keeps a WebSocket open to the relay there (remote\src\worker.js);
 // phones reach it through the relay from anywhere, so nothing listens on this PC and no firewall
 // port is needed. Pairing: the panel shows a 6-digit code (asked from the relay); the phone types
@@ -2777,6 +2947,7 @@ static class Remote
     public static Action<Action> OnUi;          // set by the app: runs on the UI thread (audio)
     public static Action Changed;               // set by the app: on / online / code / phones changed
     public static Action<string> Paired;        // set by the app: a phone (its name) just paired
+    public static Action<string> AudioChanged;  // set by the app: "out" or "vol" changed from a phone (UI thread): the banner
 
     public class Phone
     {
@@ -2986,7 +3157,7 @@ static class Remote
             if (!r.EndOfMessage) continue;
             string text = Encoding.UTF8.GetString(msg.ToArray());
             msg.SetLength(0);
-            try { Dispatch(json.Deserialize<Dictionary<string, object>>(text)); } catch { }
+            try { Dispatch(Parse(text)); } catch (Exception e) { Log("message: " + e.Message); }
         }
     }
 
@@ -2994,7 +3165,7 @@ static class Remote
     {
         ClientWebSocket c = ws;
         if (c == null || c.State != WebSocketState.Open) return;
-        byte[] b = Encoding.UTF8.GetBytes(json.Serialize(m));
+        byte[] b = Encoding.UTF8.GetBytes(Json(m));
         lock (sendLock)
         {
             try { c.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, CancellationToken.None).Wait(10000); } catch { }
@@ -3051,15 +3222,65 @@ static class Remote
             if (p == null) return;
             string plain = RemoteCrypto.Open(p.Enc, p.Mac, m["d"] as string);
             if (plain == null) return;   // not from this phone (or tampered with)
-            Handle(json.Deserialize<Dictionary<string, object>>(plain), delegate (Dictionary<string, object> reply) { SendTo(p, reply); });
+            Handle(Parse(plain), delegate (Dictionary<string, object> reply) { SendTo(p, reply); });
         }
     }
 
     static double UnixMs() { return (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds; }
 
+    // One serializer, used from the relay thread, the sender and the UI thread: one at a time.
+    static string Json(object o) { lock (json) return json.Serialize(o); }
+    static Dictionary<string, object> Parse(string s) { lock (json) return json.Deserialize<Dictionary<string, object>>(s); }
+
+    // To a phone, in order, from the sender thread: the UI thread (audio) never waits on the network.
+    static readonly Queue<KeyValuePair<Phone, Dictionary<string, object>>> outbox = new Queue<KeyValuePair<Phone, Dictionary<string, object>>>();
+    static Thread sender;
+
     static void SendTo(Phone p, Dictionary<string, object> m)
     {
-        SendRaw(new Dictionary<string, object> { { "t", "m" }, { "phone", p.Id }, { "d", RemoteCrypto.Seal(p.Enc, p.Mac, json.Serialize(m)) } });
+        lock (outbox)
+        {
+            if (outbox.Count >= 64) outbox.Dequeue();   // the relay is gone: keep the newest
+            outbox.Enqueue(new KeyValuePair<Phone, Dictionary<string, object>>(p, m));
+            Monitor.Pulse(outbox);
+            if (sender != null) return;
+            sender = new Thread(SendLoop);
+            sender.IsBackground = true;
+            sender.Start();
+        }
+    }
+
+    static void SendLoop()
+    {
+        while (true)
+        {
+            KeyValuePair<Phone, Dictionary<string, object>> item;
+            lock (outbox)
+            {
+                while (outbox.Count == 0) Monitor.Wait(outbox);
+                item = outbox.Dequeue();
+            }
+            try
+            {
+                Phone p = item.Key;
+                SendRaw(new Dictionary<string, object> { { "t", "m" }, { "phone", p.Id }, { "d", RemoteCrypto.Seal(p.Enc, p.Mac, Json(item.Value)) } });
+            }
+            catch (Exception e) { Log("send: " + e.Message); }
+        }
+    }
+
+    // remote.log in the data folder: what went wrong with a phone's request (it says nothing back).
+    static readonly object logLock = new object();
+    static void Log(string text)
+    {
+        lock (logLock)
+            try
+            {
+                string f = Path.Combine(AppPaths.Data, "remote.log");
+                if (File.Exists(f) && new FileInfo(f).Length > 64 * 1024) File.Delete(f);
+                File.AppendAllText(f, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + text + Environment.NewLine);
+            }
+            catch { }
     }
 
     // ------------------------------------------------ what a phone asks for
@@ -3109,22 +3330,52 @@ static class Remote
             case "out":
                 {
                     string id = m["id"] as string;
-                    RunUi(delegate { try { Audio.SetDefault(id); } catch { } Broadcast(); });
+                    RunUi(delegate
+                    {
+                        try { Audio.SetDefault(id); Said("out"); } catch (Exception e) { Log("out " + id + ": " + e.Message); }
+                        Broadcast();
+                    });
                     break;
                 }
             case "vol":
                 {
                     double v = Math.Max(0, Math.Min(1, Convert.ToDouble(m["v"])));
-                    RunUi(delegate { try { Audio.SetVolume(Audio.DefaultId(), (float)v); } catch { } });
+                    RunUi(delegate
+                    {
+                        try
+                        {
+                            string id = Audio.DefaultId();
+                            if (id == null) { Log("vol: no output"); return; }
+                            Audio.SetVolume(id, (float)v);
+                            Said("vol");
+                        }
+                        catch (Exception e) { Log("vol: " + e.Message); }
+                    });
                     break;
                 }
             case "mute":
                 RunUi(delegate
                 {
-                    try { float lv; bool mu; string id = Audio.DefaultId(); if (Audio.GetVolume(id, out lv, out mu)) Audio.SetMute(id, !mu); } catch { }
+                    try
+                    {
+                        float lv; bool mu; string id = Audio.DefaultId();
+                        if (id != null && Audio.GetVolume(id, out lv, out mu)) { Audio.SetMute(id, !mu); Said("vol"); }
+                    }
+                    catch (Exception e) { Log("mute: " + e.Message); }
                     Broadcast();
                 });
                 break;
+            case "app":
+                {
+                    string app = m["app"] as string, a = m["a"] as string;
+                    ThreadPool.QueueUserWorkItem(delegate
+                    {
+                        Apps.Run(app, a);
+                        Thread.Sleep(1500);   // the app has started (or quit) by now; the 2 s check catches the rest
+                        Broadcast();
+                    });
+                    break;
+                }
             case "obs":
                 {
                     string a = m["a"] as string;
@@ -3141,16 +3392,25 @@ static class Remote
         if (on != null) on(a); else a();
     }
 
-    // every phone online gets the audio outputs again (after a change)
-    public static void Broadcast()
+    static void Said(string what) { Action<string> a = AudioChanged; if (a != null) a(what); }
+
+    // every phone online gets the audio outputs and the apps again (after a change)
+    public static void Broadcast() { RunUi(delegate { Push(true); }); }
+
+    // On the UI thread, every 2 s (the app's audio watch): what the phones show, sent again when
+    // it changed on the PC (the panel, the controller, Windows, an app opened or closed).
+    public static void PushIfChanged() { Push(false); }
+
+    static string lastPushed;
+    static void Push(bool always)
     {
         List<Phone> online = Phones.FindAll(delegate (Phone p) { return p.Online; });
-        if (online.Count == 0) return;
-        RunUi(delegate
-        {
-            Dictionary<string, object> st = State();
-            foreach (Phone p in online) SendTo(p, st);
-        });
+        if (online.Count == 0) { lastPushed = null; return; }
+        Dictionary<string, object> st = State();
+        string s = Json(st);
+        if (!always && s == lastPushed) return;
+        lastPushed = s;
+        foreach (Phone p in online) SendTo(p, st);
     }
 
     static Dictionary<string, object> State()
@@ -3164,8 +3424,15 @@ static class Remote
             def = Audio.DefaultId(false);
             if (def != null) Audio.GetVolume(def, out vol, out mute);
         }
-        catch { }
-        return new Dictionary<string, object> { { "t", "state" }, { "outs", outs }, { "def", def }, { "vol", Math.Round(vol, 3) }, { "mute", mute } };
+        catch (Exception e) { Log("state: " + e.Message); }
+        List<object> apps = new List<object>();
+        try
+        {
+            foreach (Apps.App a in Apps.List())
+                apps.Add(new Dictionary<string, object> { { "id", a.Id }, { "name", a.Name }, { "running", a.Running } });
+        }
+        catch (Exception e) { Log("apps: " + e.Message); }
+        return new Dictionary<string, object> { { "t", "state" }, { "outs", outs }, { "def", def }, { "vol", Math.Round(vol, 3) }, { "mute", mute }, { "apps", apps } };
     }
 }
 
@@ -4701,7 +4968,7 @@ class XdeckApp : Form
         knownMic = Ids(true);
         System.Windows.Forms.Timer watch = new System.Windows.Forms.Timer();
         watch.Interval = 2000;
-        watch.Tick += delegate { WatchAudio(); };
+        watch.Tick += delegate { WatchAudio(); Remote.PushIfChanged(); };   // the phones follow too
         watch.Start();
 
         // "Xdeck.exe --panel" from another process opens the panel here.
@@ -4724,6 +4991,11 @@ class XdeckApp : Form
         {
             // a phone on this network asked to connect: bring up the panel with the code to type
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { panel.ShowPanel(); panel.SendState(); });
+        };
+        Remote.AudioChanged = delegate (string what) { PhoneAudio(what); };
+        Apps.Said = delegate (string caption, string text)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { banner.Show(caption, text, "monitor", 0, 0); });
         };
         Remote.Paired = delegate (string name)
         {
@@ -5189,6 +5461,28 @@ class XdeckApp : Form
             if (panel.Visible) panel.Reload();
         }
         catch (Exception ex) { banner.ShowDevice("Error: " + ex.Message, 0, 0); }
+    }
+
+    // The phone changed the output or the volume: the same banner as the controller's audio combo.
+    void PhoneAudio(string what)
+    {
+        try
+        {
+            string id = Audio.DefaultId();
+            if (id == null) return;
+            if (what == "out")
+            {
+                List<string> active = ActiveDevices();
+                banner.ShowDevice(Audio.Name(id), Math.Max(0, active.IndexOf(id)), active.Count);
+            }
+            else
+            {
+                float level; bool mute;
+                if (Audio.GetVolume(id, out level, out mute)) banner.ShowVolume(Audio.Name(id), (int)Math.Round(level * 100), mute);
+            }
+            if (panel.Visible) panel.Reload();
+        }
+        catch { }
     }
 
     // The controller's volume combo: the active output up or down 5%, on the 5% steps the panel uses.

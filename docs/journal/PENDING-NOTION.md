@@ -374,3 +374,26 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
   itself was not exercised with a physical controller.
 
 Ficou fora do dev: nothing.
+
+## 2026-11-14 — Phone remote: Apps tab (OBS, Steam, PC settings) and phone audio hardening
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-14
+- Type: Feature + Fix
+- Area: Phone remote (PWA + PC side)
+- Status: On branch, not released (needs a Windows build and the relay deploy)
+- Summary: The OBS tab becomes Apps: the PC reports which apps it has (OBS from HKLM\SOFTWARE\OBS
+  Studio, Steam from HKCU\Software\Valve\Steam, Settings always) and whether each runs; the phone
+  shows a button only for those. OBS gets open / close; Steam gets open / close, Big Picture,
+  library, store, friends, downloads, settings; PC settings gets Settings pages plus lock, sleep,
+  restart, shut down (confirmed on the phone). Phone audio: banners on the PC, state pushed every
+  2 s when it changes, replies sent from a sender thread instead of the UI thread, remote.log for
+  failures. The reported "volume / output on the phone does not work" did not reproduce against a
+  simulated PC through the local relay; real-PC cause still unconfirmed.
+- Agent: Claude Code
+- Repo / Branch: Skale-Club/xdeck / ccr-c48f921e-b3t4rf
+- Tests: 16 Node tests passed; C# compiled with Mono mcs -langversion:5 (CNG ECDH stubbed);
+  end-to-end Playwright run (phone app + wrangler dev relay + Node PC stand-in): outputs listed,
+  output switch and volume reached the PC, app open / OBS record / Settings page sent, shut down
+  asked first. Not run on Windows.

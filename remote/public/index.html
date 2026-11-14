@@ -77,6 +77,20 @@
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
   .vol svg { width: 24px; height: 24px; }
   .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; margin: 0; }
+  .btn.danger { color: #ff8a80; }
+
+  /* apps */
+  .chips { display: flex; gap: 8px; margin-top: 6px; }
+  .chip { flex: 1; min-width: 0; min-height: 68px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 600 12.5px -apple-system, "Segoe UI", sans-serif; }
+  .chip svg { width: 26px; height: 26px; }
+  .chip.on { box-shadow: inset 0 0 0 2px var(--accent); }
+  .chip .run { position: absolute; top: 9px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .apphead { display: flex; align-items: center; gap: 10px; padding: 0 2px; margin-top: 4px; }
+  .apphead .nm { flex: 1; font-weight: 650; font-size: 17px; }
+  .apphead .st { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); }
+  .apphead .st i { width: 8px; height: 8px; border-radius: 50%; background: #5a5a60; }
+  .apphead .st i.on { background: var(--green); }
 
   /* pairing */
   [hidden] { display: none !important; }
@@ -209,17 +223,9 @@
     <div class="outs" id="outs"></div>
   </section>
 
-  <section id="tab-obs">
-    <div class="grid3" style="grid-template-columns:repeat(2,1fr);margin-top:6px">
-      <button class="btn big" data-obs="record">● Record</button>
-      <button class="btn big" data-obs="pause">❚❚ Pause</button>
-      <button class="btn big" data-obs="stream">Stream</button>
-      <button class="btn big" data-obs="replay">Save replay</button>
-      <button class="btn big" data-obs="scene.previous">◀ Scene</button>
-      <button class="btn big" data-obs="scene.next">Scene ▶</button>
-      <button class="btn big" data-obs="virtualcam">Virtual camera</button>
-    </div>
-    <p class="note">Each button starts or stops it. OBS needs its WebSocket server on (Tools › WebSocket Server Settings); the PC shows what OBS did.</p>
+  <section id="tab-apps">
+    <div class="chips" id="appChips"></div>
+    <div id="appBody"><p class="note">Looking for apps on the PC…</p></div>
   </section>
 </main>
 
@@ -228,7 +234,7 @@
   <button data-tab="keys"><svg viewBox="0 0 24 24"><rect x="1.8" y="6" width="20.4" height="12.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 9.6h1.2M9.2 9.6h1.2M13 9.6h1.2M16.8 9.6h1.2M5.5 12.4h1.2M9.2 12.4h1.2M13 12.4h1.2M16.8 12.4h1.2M8 15.2h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>Keyboard</button>
   <button data-tab="media"><svg viewBox="0 0 24 24"><path d="M5 4l9 8-9 8zM16 5v14M20 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Media</button>
   <button data-tab="audio"><svg viewBox="0 0 24 24"><path d="M3.5 9h3.8L12 5v14l-4.7-4H3.5z" fill="currentColor"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Audio</button>
-  <button data-tab="obs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>OBS</button>
+  <button data-tab="apps"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>Apps</button>
 </nav>
 
 <div id="menu"><div class="sheet" id="sheet"></div></div>
@@ -558,7 +564,7 @@ $("tabs").addEventListener("click", (e) => {
   if (!b) return;
   document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
   document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", s.id === "tab-" + b.dataset.tab));
-  if (b.dataset.tab === "audio") send({ t: "state" });
+  if (b.dataset.tab === "audio" || b.dataset.tab === "apps") send({ t: "state" });
 });
 
 // ------------------------------------------------------------ touchpad
@@ -688,6 +694,9 @@ const $outs = $("outs"), $vol = $("vol"), $volPct = $("volPct");
 let sliding = false, volTimer = 0;
 function onState(m) {
   if (m.t !== "state") return;
+  apps = Array.isArray(m.apps) ? m.apps : [];
+  appsKnown = Array.isArray(m.apps);
+  renderApps();
   $outs.innerHTML = (m.outs || []).map((o) =>
     `<div class="out${o.id === m.def ? " on" : ""}" data-id="${esc(o.id)}"><span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
     `<p class="note">No audio output connected</p>`;
@@ -709,8 +718,73 @@ $vol.addEventListener("input", () => {
 $vol.addEventListener("change", () => { sliding = false; send({ t: "vol", v: $vol.value / 100 }); });
 $("muteBtn").addEventListener("click", () => send({ t: "mute" }));
 
-// ------------------------------------------------------------ OBS
-document.querySelectorAll("[data-obs]").forEach((b) => b.addEventListener("click", () => { send({ t: "obs", a: b.dataset.obs }); vibrate(12); }));
+// ------------------------------------------------------------ apps
+// One button per app the PC has (the PC lists them, with whether each is running: an app that is
+// not installed there has no button), and under it the chosen app's open / close and its buttons.
+// OBS's buttons go as {t:"obs"} (OBS's WebSocket server), the rest as {t:"app", app, a}.
+const ICONS = {
+  obs: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>',
+  steam: '<svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 10.5v4M5.5 12.5h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="11.2" r="1.3" fill="currentColor"/><circle cx="17.8" cy="13.8" r="1.3" fill="currentColor"/></svg>',
+  settings: '<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1L5.3 5.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+const APPS = {
+  obs: { label: "OBS", name: "OBS Studio", needsOpen: true,
+    groups: [{ cols: 2, fns: [["record", "● Record"], ["pause", "❚❚ Pause"], ["stream", "Stream"], ["replay", "Save replay"], ["scene.previous", "◀ Scene"], ["scene.next", "Scene ▶"], ["virtualcam", "Virtual camera"]] }],
+    note: "Each button starts or stops it. OBS needs its WebSocket server on (Tools › WebSocket Server Settings); the PC shows what OBS did." },
+  steam: { label: "Steam", name: "Steam", reopen: true,
+    groups: [{ cols: 2, fns: [["bigpicture", "Big Picture"], ["exitbigpicture", "Leave Big Picture"], ["library", "Library"], ["store", "Store"], ["friends", "Friends"], ["downloads", "Downloads"], ["settings", "Steam settings"]] }] },
+  settings: { label: "Settings", name: "PC settings", reopen: true,
+    groups: [
+      { lbl: "Open in Settings", cols: 3, fns: [["sound", "Sound"], ["display", "Display"], ["bluetooth", "Bluetooth"], ["wifi", "Wi-Fi"], ["update", "Windows Update"], ["power", "Power"]] },
+      { lbl: "PC", cols: 2, fns: [["lock", "Lock"], ["sleep", "Sleep", "Put the PC to sleep?"], ["restart", "Restart", "Restart the PC now?"], ["shutdown", "Shut down", "Shut down the PC now?"]] },
+    ] },
+};
+let apps = [], appsKnown = false, appBusy = {};
+let appSel = (() => { try { return localStorage.getItem("xdeck-app") || ""; } catch (_) { return ""; } })();
+function renderApps() {
+  const list = apps.filter((a) => APPS[a.id]);
+  if (!list.length) {
+    $("appChips").innerHTML = "";
+    $("appBody").innerHTML = `<p class="note">${appsKnown || !current ? "No apps found on this PC." : "Update Xdeck on the PC to see its apps here."}</p>`;
+    return;
+  }
+  if (!list.some((a) => a.id === appSel)) appSel = list[0].id;
+  $("appChips").innerHTML = list.map((a) =>
+    `<button class="chip${a.id === appSel ? " on" : ""}" data-app="${a.id}">${ICONS[a.id]}<span>${esc(APPS[a.id].label)}</span>${a.running ? '<i class="run"></i>' : ""}</button>`).join("");
+  const a = list.find((x) => x.id === appSel), d = APPS[a.id];
+  const busy = appBusy[a.id] && appBusy[a.id].running === a.running && Date.now() < appBusy[a.id].until ? appBusy[a.id].text : "";
+  let h = `<div class="apphead"><span class="nm">${esc(d.name)}</span><span class="st"><i class="${a.running ? "on" : ""}"></i>${busy || (a.running ? "Open" : "Closed")}</span></div>`;
+  h += `<div class="row">`;
+  if (!a.running || d.reopen) h += `<button class="btn${a.running ? "" : " accent"}" data-app-a="open">${a.running ? "Show" : "Open"}</button>`;
+  if (a.running) h += `<button class="btn danger" data-app-a="close">Close</button>`;
+  h += `</div>`;
+  if (d.needsOpen && !a.running) h += `<p class="note">Open ${esc(d.name)} to use its buttons.</p>`;
+  else {
+    for (const g of d.groups) {
+      if (g.lbl) h += `<div class="lbl">${esc(g.lbl)}</div>`;
+      h += `<div class="grid3" style="grid-template-columns:repeat(${g.cols},1fr)">` +
+        g.fns.map(([id, text, ask]) => `<button class="btn${g.cols === 2 ? " big" : " small"}" data-app-a="${id}"${ask ? ` data-ask="${esc(ask)}"` : ""}>${esc(text)}</button>`).join("") + `</div>`;
+    }
+    if (d.note) h += `<p class="note">${esc(d.note)}</p>`;
+  }
+  $("appBody").innerHTML = h;
+}
+$("tab-apps").addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-app]");
+  if (chip) { appSel = chip.dataset.app; try { localStorage.setItem("xdeck-app", appSel); } catch (_) {} renderApps(); return; }
+  const b = e.target.closest("[data-app-a]");
+  if (!b) return;
+  const act = b.dataset.appA, app = apps.find((x) => x.id === appSel);
+  if (!app) return;
+  if (b.dataset.ask && !confirm(b.dataset.ask)) return;
+  if (app.id === "obs" && act !== "open" && act !== "close") send({ t: "obs", a: act });
+  else send({ t: "app", app: app.id, a: act });
+  if ((act === "open" && !app.running) || act === "close") {
+    appBusy[app.id] = { running: app.running, until: Date.now() + 8000, text: act === "open" ? "Opening…" : "Closing…" };
+    renderApps();
+  }
+  vibrate(12);
+});
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 connect();
