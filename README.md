@@ -66,9 +66,15 @@ disconnects. Built-in audio devices remain available while Windows reports them 
 
 Every device that connects shows up in a banner at the top left of the screen: a controller, a
 Bluetooth device (headphones, mouse, keyboard, phone, speaker) or a USB device (a pen drive, a headset,
-a keyboard, a phone), with its battery when it reports one (the pills and the percent, *charging*;
-a controller on a cable says `USB`). A mouse or keyboard gets a small one-line banner instead, with
-its battery when it has one. Several at once come one after another.
+a keyboard, a phone, a webcam), with its battery when it reports one (the pills and the percent,
+*charging*; a controller on a cable says `USB`). A mouse or keyboard gets a small one-line banner
+instead, with its battery when it has one. Several at once come one after another.
+
+The banner's icon says what the device is: the controller's own model, headphones, a microphone, a
+webcam, a pen drive or disk, a mouse, a keyboard (from what Windows installed for it, not only its
+name). A USB device that has no name of its own ("USB Composite Device") is named after its webcam,
+microphone or disk. When Xdeck knows the maker, its logo comes in white before the name: Xbox,
+PlayStation, Nintendo, Logitech, Logitech G, Apple, Hollyland, Roku, Acer.
 
 When a wireless device drops to 15%, an alert slides in at the top centre of the screen: a red card
 with a pulsing battery, the device and how much is left. It stays six seconds (a click closes it) and
@@ -193,8 +199,10 @@ cd remote; wrangler deploy
 ## Switch the audio output without the panel
 
 - `Ctrl+Alt+F11` / `Ctrl+Alt+F10`: next / previous output.
-- On a controller: hold **D-pad right + L1** (LB / L) and flick the **right stick** right or up for
-  the next output, left or down for the previous one.
+- On a controller: hold **D-pad right + L1** (LB / L) and flick the **right stick** right for the
+  next output, left for the previous one.
+- Same hold, **right stick up / down**: volume up / down 5% (hold the stick to keep going). A banner
+  shows the output and its level.
 - A banner on the primary screen names the new output.
 - `Data\devices.txt` (optional): output IDs, one per line, in the order to cycle. Without it every
   connected output is used, alphabetically.
@@ -207,7 +215,7 @@ line it cannot use is named in a notification and keeps the shortcut that was in
 
 ```ini
 panel = L1 + Right + Triangle      # open / hide the panel
-audio = L1 + Right                 # hold, then flick the right stick to switch the output
+audio = L1 + Right                 # hold, then right stick left / right = output, up / down = volume
 audio.next = Ctrl+Alt+F11
 audio.previous = Ctrl+Alt+F10
 mouse = L1 + Right + Square        # controller as mouse on / off
@@ -276,10 +284,15 @@ pelo próprio controle.
   controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
 - **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
-  e empurre o **analógico direito** (direita/cima = próxima, esquerda/baixo = anterior).
+  e empurre o **analógico direito** (direita = próxima, esquerda = anterior).
+- **Volume pelo controle:** mesmo atalho, **analógico direito para cima / para baixo** sobe / desce
+  o volume 5% (segure para continuar).
 - **Dispositivo conectado:** qualquer dispositivo que conectar aparece num aviso no canto da tela —
   controle, Bluetooth (fone, mouse, teclado, celular, caixa de som) ou USB (pendrive, headset,
-  teclado, celular) — com a bateria quando ele informa (barrinhas e porcentagem, *charging*). Mouse
+  teclado, celular, webcam) — com o ícone do tipo (o modelo do controle, fone, microfone, webcam,
+  pendrive ou disco) e a logo da marca em branco antes do nome quando o Xdeck a conhece (Xbox,
+  PlayStation, Nintendo, Logitech, Logitech G, Apple, Hollyland, Roku, Acer), e com a bateria quando
+  ele informa (barrinhas e porcentagem, *charging*). Mouse
   e teclado aparecem de forma discreta, numa linha só, com a bateria se tiverem. Quando um
   dispositivo sem fio chega a 15%, um alerta vermelho desliza no topo da tela, com a bateria pulsando,
   o nome e quanto resta (clique para fechar); só volta depois de carregar.

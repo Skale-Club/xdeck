@@ -44,6 +44,27 @@ static class MakeIcon
             }
             return 0;
         }
+        // MakeIcon --logo <in.png> <out.png>: a brand logo (any colour, on transparent) to a mask, white
+        // where the logo is, trimmed tight to it so the banner knows its width (Render-BrandLogos.ps1)
+        if (args.Length == 3 && args[0] == "--logo")
+        {
+            using (Bitmap src = new Bitmap(args[1]))
+            {
+                int minX = src.Width, minY = src.Height, maxX = -1, maxY = -1;
+                for (int y = 0; y < src.Height; y++)
+                    for (int x = 0; x < src.Width; x++)
+                        if (src.GetPixel(x, y).A > 8) { minX = Math.Min(minX, x); minY = Math.Min(minY, y); maxX = Math.Max(maxX, x); maxY = Math.Max(maxY, y); }
+                if (maxX < 0) { Console.Error.WriteLine("empty image"); return 1; }
+                using (Bitmap dst = new Bitmap(maxX - minX + 1, maxY - minY + 1, PixelFormat.Format32bppArgb))
+                {
+                    for (int y = minY; y <= maxY; y++)
+                        for (int x = minX; x <= maxX; x++)
+                            dst.SetPixel(x - minX, y - minY, Color.FromArgb(src.GetPixel(x, y).A, 255, 255, 255));
+                    dst.Save(args[2], ImageFormat.Png);
+                }
+            }
+            return 0;
+        }
         // MakeIcon --png <dir>: the phone remote app's icons (remote\public)
         if (args.Length == 2 && args[0] == "--png")
         {

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.6 — 2026-11-14
+
+- **Volume from the controller**: hold L1 + D-pad right (the audio shortcut) and push the right
+  stick up or down for the volume, 5% at a time (hold it to keep going); a banner shows the output
+  and a level bar. Left / right still switch the output (up / down used to switch it too).
+- **No more stray OBS banners**: with OBS Studio closed, an OBS shortcut pressed by chance in a game
+  (R1 + L3, R1 + R3, ...) does nothing and says nothing. The same OBS error is shown once a minute at
+  most. The phone remote's OBS buttons still say "OBS is not open".
+- The icon in the banners is white, like the maker's logo, instead of the Windows accent color.
+- **The connection banner shows the maker's logo** in white before the name, like the panel's
+  controller cards: Xbox, PlayStation, Nintendo, Logitech G (G29), Logitech (receiver mice and
+  keyboards, Yeti), Apple (AirPods), Hollyland, Roku, Acer. Also in the one-line mouse and keyboard
+  banner, the low-battery alert, and the audio output / microphone banners. The logos are masks
+  made from `ui\brands` by `tools\Render-BrandLogos.ps1`, embedded in the exe.
+- **The right icon for USB devices**: a webcam gets a camera, a pen drive, card reader or external
+  disk gets a drive, a USB microphone or headset its own icon, from what Windows installed under
+  the device instead of the generic USB plug.
+- A USB device without a name of its own ("USB Composite Device") is named after its webcam,
+  microphone or disk ("EMEET SmartCam S600", "Wireless microphone").
+- `Xdeck.exe --banners <file.png>` renders sample banners of every look for a visual check.
+
 ## 2026-11-11 — Remote PWA
 
 - Center the phone pairing screen vertically, keep overflow scrollable, and show the Xdeck name

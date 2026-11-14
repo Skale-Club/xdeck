@@ -81,7 +81,8 @@ static class ShortcutsFile
 # open / hide the panel
 panel = L1 + Right + Triangle
 
-# hold these, then flick the right stick: right / up = next audio output, left / down = previous
+# hold these, then flick the right stick: right / left = next / previous audio output,
+# up / down = volume up / down 5% (hold the stick to keep going)
 audio = L1 + Right
 
 # next / previous audio output from the keyboard
@@ -918,6 +919,7 @@ class Device
     public string Key;          // stable: the controller's / Bluetooth address, the USB instance ID
     public string Name;
     public string Glyph = "usb";    // banner icon
+    public string Brand;            // the maker's logo in the banner (Brands), null for none
     public string Conn = "USB";     // USB | Bluetooth
     public int Battery = -1;    // percent, -1 unknown or none
     public bool Charging, Connected, Pad;
@@ -926,7 +928,45 @@ class Device
     public static Device Of(Pad p)
     {
         // the banner draws this model's own silhouette (Ui.IconBitmap)
-        return new Device { Key = p.Mac, Name = p.Name, Glyph = "pad:" + p.Kind, Conn = p.Conn, Battery = p.Battery, Charging = p.Charging, Connected = true, Pad = true };
+        return new Device { Key = p.Mac, Name = p.Name, Glyph = "pad:" + p.Kind, Brand = Brands.OfPad(p.Kind), Conn = p.Conn, Battery = p.Battery, Charging = p.Charging, Connected = true, Pad = true };
+    }
+}
+
+// The maker of a device, for its logo in the banner: ui\brands\mask\<brand>.png (embedded as
+// brand-<brand>.png, tools\Render-BrandLogos.ps1), the same logos and names as the panel's ui\brands.
+static class Brands
+{
+    public static string OfPad(string kind)
+    {
+        switch (kind)
+        {
+            case "xbox": return "xbox";
+            case "dualsense": return "playstation";
+            case "switchpro": case "joycon": return "nintendo";
+            case "g29": return "logitechg";
+        }
+        return null;   // the handbrake has no maker's logo
+    }
+
+    // From the device's name, else from its USB vendor (usbId: the USB instance ID, or null).
+    public static string Of(string name, string usbId)
+    {
+        string n = (name ?? "").ToLowerInvariant();
+        if (n.Contains("xbox")) return "xbox";
+        if (Regex.IsMatch(n, @"playstation|dualsense|dualshock|\bpulse (elite|explore|3d)\b")) return "playstation";
+        if (Regex.IsMatch(n, @"nintendo|joy-con")) return "nintendo";
+        if (Regex.IsMatch(n, @"airpods|\bapple\b|magic (mouse|keyboard|trackpad)")) return "apple";
+        if (Regex.IsMatch(n, @"logitech g\b|lightspeed|\bastro a\d|\bg ?pro\b|\bg\d{3}\b")) return "logitechg";
+        if (Regex.IsMatch(n, @"logitech|\blogi\b|\byeti\b|blue microphones|\bmx (master|anywhere|keys|ergo|mechanical|vertical)\b|\bpop (keys|mouse)\b|\b[km]\d{3}\b")) return "logitech";
+        if (n.Contains("roku")) return "roku";
+        if (Regex.IsMatch(n, @"\bacer\b|\bpredator\b")) return "acer";
+        if (Regex.IsMatch(n, @"hollyland|\blark\b|wireless microphone")) return "hollyland";
+        string id = (usbId ?? "").ToLowerInvariant();
+        if (id.Contains("vid_046d")) return "logitech";
+        if (id.Contains("vid_054c")) return "playstation";
+        if (id.Contains("vid_057e")) return "nintendo";
+        if (id.Contains("vid_05ac")) return "apple";
+        return null;
     }
 }
 
@@ -1153,6 +1193,7 @@ static class Pads
             foreach (KeyValuePair<string, int> b in batteries)
                 if (b.Key.Contains(mac)) dv.Battery = Math.Max(dv.Battery, b.Value);
             dv.Glyph = Kind(dv.Name, mac, false, mice, keyboards, "bt");
+            dv.Brand = Brands.Of(dv.Name, null);
         }
         return devs;
     }
@@ -1160,10 +1201,57 @@ static class Pads
     // USB devices plugged in from outside: not hubs, not what is built into the PC (webcam, card
     // reader, Bluetooth radio), not the wheel and handbrake (they have their own banner). The name is
     // the one the device gives itself ("SanDisk Ultra", "G435 Wireless Gaming Headset").
+    // What Windows made of a USB device's parts: a webcam, an audio device, a disk. Each entry is a
+    // device of that class with the instance IDs (upper case) of a few of its parents, and its name.
+    static readonly Guid ClassCamera = new Guid("CA3E7AB9-B4C3-4AE6-8251-579EF933890F");
+    static readonly Guid ClassImage = new Guid("6BDD1FC6-810F-11D0-BEC7-08002BE2092F");
+    static readonly Guid ClassMedia = new Guid("4D36E96C-E325-11CE-BFC1-08002BE10318");
+    static readonly Guid ClassDisk = new Guid("4D36E967-E325-11CE-BFC1-08002BE10318");
+    class Part { public List<string> Up = new List<string>(); public string Name; }
+
+    static List<Part> Parts(Guid cls)
+    {
+        List<Part> o = new List<Part>();
+        IntPtr set = SetupDiGetClassDevs(ref cls, IntPtr.Zero, IntPtr.Zero, 0x2);   // PRESENT
+        if (set == NoSet) return o;
+        SP_DEVINFO_DATA d = new SP_DEVINFO_DATA();
+        d.cbSize = Marshal.SizeOf(d);
+        for (int i = 0; SetupDiEnumDeviceInfo(set, i, ref d); i++)
+        {
+            Part p = new Part();
+            p.Name = Text(Prop(set, ref d, KeyFriendlyName));
+            if (p.Name.Length == 0) p.Name = Text(Prop(set, ref d, KeyDesc));
+            uint dev = d.DevInst;
+            for (int up = 0; up < 4; up++)
+            {
+                uint parent;
+                if (CM_Get_Parent(out parent, dev, 0) != 0) break;
+                dev = parent;
+                StringBuilder sb = new StringBuilder(512);
+                if (CM_Get_Device_ID(dev, sb, sb.Capacity, 0) != 0) break;
+                p.Up.Add(sb.ToString().ToUpperInvariant());
+            }
+            o.Add(p);
+        }
+        SetupDiDestroyDeviceInfoList(set);
+        return o;
+    }
+
+    // "USB Composite Device", "USB Mass Storage Device", "HID Keyboard Device": names Windows gives
+    // when the device has none of its own.
+    static readonly Regex GenericName = new Regex(@"^(usb|hid)\b.*\bdevice$|^generic\b", RegexOptions.IgnoreCase);
+
+    static Part PartOf(List<Part> parts, string id)
+    {
+        return parts.Find(delegate (Part p) { return p.Up.Contains(id); });
+    }
+
     public static List<Device> Usb()
     {
         List<Device> o = new List<Device>();
         List<string> mice = InputChain(ClassMouse), keyboards = InputChain(ClassKeyboard);
+        List<Part> cameras = Parts(ClassCamera), media = Parts(ClassMedia), disks = Parts(ClassDisk);
+        cameras.AddRange(Parts(ClassImage));
         Guid g = UsbDeviceInterface;
         IntPtr set = SetupDiGetClassDevs(ref g, IntPtr.Zero, IntPtr.Zero, 0x12);   // PRESENT | DEVICEINTERFACE
         if (set == NoSet) return o;
@@ -1185,8 +1273,25 @@ static class Pads
             if (name.Length == 0) name = Text(Prop(set, ref d, KeyFriendlyName));
             if (name.Length == 0) name = Text(Prop(set, ref d, KeyDesc));
             if (name.Length == 0 || name.ToLowerInvariant().Contains("hub")) continue;
-            string glyph = Kind(name, id.ToUpperInvariant(), true, mice, keyboards, "usb");
-            o.Add(new Device { Key = "usb-" + id, Name = name, Glyph = glyph, Conn = "USB", Connected = true });
+            string up = id.ToUpperInvariant();
+            // a webcam, an audio device (its microphone or headset), a disk (pen drive, card reader, SSD)
+            Part cam = PartOf(cameras, up), audio = PartOf(media, up), disk = PartOf(disks, up);
+            // no name of its own: the name of its webcam, audio device or disk ("EMEET SmartCam S600")
+            if (GenericName.IsMatch(name))
+                foreach (Part p in new Part[] { cam, audio, disk })
+                    if (p != null && p.Name.Length > 0 && !GenericName.IsMatch(p.Name))
+                    {
+                        name = Regex.Replace(p.Name, @"\s+(USB|SCSI Disk)\s+Device$", "", RegexOptions.IgnoreCase);
+                        break;
+                    }
+            string glyph = Kind(name, up, true, mice, keyboards, "usb");
+            if (glyph == "usb")
+            {
+                if (cam != null) glyph = "camera";
+                else if (audio != null) glyph = GlyphFor(name, "headphones");   // "Wireless microphone": mic
+                else if (disk != null) glyph = "drive";
+            }
+            o.Add(new Device { Key = "usb-" + id, Name = name, Glyph = glyph, Brand = Brands.Of(name, id), Conn = "USB", Connected = true });
         }
         SetupDiDestroyDeviceInfoList(set);
         return o;
@@ -1604,7 +1709,7 @@ static class LogiReceivers
         bool fresh = (DateTime.Now - k.At).TotalHours < 12;
         return new Device {
             Key = key, Name = string.IsNullOrEmpty(name) ? (glyph == "keyboard" ? "Keyboard" : glyph == "mouse" ? "Mouse" : "Logitech device") : name,
-            Glyph = glyph, Conn = "Receiver", Battery = fresh ? k.Battery : -1, Charging = fresh && k.Charging, Connected = true };
+            Glyph = glyph, Brand = "logitech", Conn = "Receiver", Battery = fresh ? k.Battery : -1, Charging = fresh && k.Charging, Connected = true };
     }
 
     static string Ascii(byte[] b, int start, int len)
@@ -1836,24 +1941,50 @@ static class Shortcuts
 
 // ---------------------------------------------------------------- the audio combo
 // Hold the audio buttons (D-pad right + L1 by default), then flick the right stick:
-// right or up = next output, left or down = previous output.
+// right = next output, left = previous output; up = volume up, down = volume down (held up or
+// down, the volume keeps moving).
 class Combo
 {
-    public static Action<int> Fire;   // set by the app; called from input threads
+    public static Action<int> Fire;     // next / previous output; set by the app, called from input threads
+    public static Action<int> Volume;   // volume up (+1) / down (-1); same
+    const int RepeatDelayMs = 450, RepeatMs = 160;
     bool armed = true;
+    int volDir;                          // the stick is held up (+1) or down (-1) for the volume
+    DateTime volNext;
 
     // true when it fired on this reading
     public bool Update(PadState s)
     {
         float x = s.RX, y = s.RY;
         float mag = Math.Max(Math.Abs(x), Math.Abs(y));
-        if (mag < 0.30f) { armed = true; return false; }
+        if (mag < 0.30f) { armed = true; volDir = 0; return false; }
         int need = Shortcuts.Audio;
-        if (need == 0 || (s.Bits & need) != need || !armed || mag < 0.65f) return false;
+        if (need == 0 || (s.Bits & need) != need) { volDir = 0; return false; }
+        DateTime now = DateTime.Now;
+        if (volDir != 0)
+        {
+            // still up (or down) and mostly vertical: repeat; anything else ends the repeat
+            if (Math.Abs(y) < 0.50f || Math.Abs(y) < Math.Abs(x) || (y > 0 ? 1 : -1) != volDir) { volDir = 0; return false; }
+            if (now < volNext) return false;
+            volNext = now.AddMilliseconds(RepeatMs);
+            Action<int> v = Volume;
+            if (v != null) v(volDir);
+            return true;
+        }
+        if (!armed || mag < 0.65f) return false;
         armed = false;
-        int dir = Math.Abs(x) >= Math.Abs(y) ? (x > 0 ? 1 : -1) : (y > 0 ? 1 : -1);
-        Action<int> f = Fire;
-        if (f != null) f(dir);
+        if (Math.Abs(x) >= Math.Abs(y))
+        {
+            Action<int> f = Fire;
+            if (f != null) f(x > 0 ? 1 : -1);
+        }
+        else
+        {
+            volDir = y > 0 ? 1 : -1;     // RY is positive up on every reader
+            volNext = now.AddMilliseconds(RepeatDelayMs);
+            Action<int> v = Volume;
+            if (v != null) v(volDir);
+        }
         return true;
     }
 }
@@ -2207,6 +2338,7 @@ class ObsBinding
     public string Action;   // record pause stream replay virtualcam scene.next scene.previous scene mute hotkey
     public string Target;   // the scene, audio source or OBS hotkey name, as written
     public int[] Steps;     // the controller shortcut
+    public bool Remote;     // pressed on the phone remote, on purpose: says so when OBS is not open
 
     static readonly string[] Simple = { "record", "pause", "stream", "replay", "virtualcam", "scene.next", "scene.previous" };
     static readonly string[] Named = { "scene", "mute", "hotkey" };
@@ -2275,10 +2407,37 @@ static class Obs
                 while (queue.Count == 0) Monitor.Wait(queue);
                 b = queue.Dequeue();
             }
-            try { Do(b); }
-            catch (ObsError e) { Say("OBS", e.Message, "rec"); }
-            catch (Exception e) { Close(); Say("OBS", "Error: " + e.Message, "rec"); }
+            // OBS closed: the shortcut was most likely pressed in a game (R1 + L3 and the like), so
+            // nothing happens and nothing is said.
+            if (!Running()) { Close(); if (b.Remote) SayError("OBS is not open"); continue; }
+            try { Do(b); lastError = null; }
+            catch (ObsError e) { SayError(e.Message); }
+            catch (Exception e) { Close(); SayError("Error: " + e.Message); }
         }
+    }
+
+    static bool Running()
+    {
+        foreach (string n in new[] { "obs64", "obs32", "obs" })
+        {
+            Process[] ps = null;
+            try { ps = Process.GetProcessesByName(n); if (ps.Length > 0) return true; }
+            catch { }
+            finally { if (ps != null) foreach (Process p in ps) p.Dispose(); }
+        }
+        return false;
+    }
+
+    // The same error again within a minute is not shown again (a shortcut pressed over and over).
+    static string lastError;
+    static DateTime lastErrorAt;
+    static void SayError(string text)
+    {
+        DateTime now = DateTime.Now;
+        if (text == lastError && (now - lastErrorAt).TotalSeconds < 60) return;
+        lastError = text;
+        lastErrorAt = now;
+        Say("OBS", text, "rec");
     }
 
     static void Say(string caption, string text, string icon) { Say(caption, text, icon, 0, 0); }
@@ -2969,7 +3128,7 @@ static class Remote
             case "obs":
                 {
                     string a = m["a"] as string;
-                    if (Array.IndexOf(ObsActions, a) >= 0) Obs.Run(new ObsBinding { Key = "obs." + a, Action = a });
+                    if (Array.IndexOf(ObsActions, a) >= 0) Obs.Run(new ObsBinding { Key = "obs." + a, Action = a, Remote = true });
                     break;
                 }
             case "state": RunUi(delegate { reply(State()); }); break;
@@ -3272,6 +3431,8 @@ static class Ui
                 case "usb": DrawUsb(g, fill, clear, s); break;
                 case "mouse": DrawMouse(g, fill, clear, s); break;
                 case "keyboard": DrawKeyboard(g, fill, clear, s); break;
+                case "camera": DrawCamera(g, fill, clear, s); break;
+                case "drive": DrawDrive(g, fill, clear, s); break;
                 case "wheel": DrawWheel(g, c, fill, s); break;
                 case "handbrake": DrawHandbrake(g, c, fill, s); break;
                 default: DrawPad(g, fill, clear, s); break;
@@ -3485,6 +3646,83 @@ static class Ui
         g.CompositingMode = CompositingMode.SourceOver;
     }
 
+    // Webcam: a round head with its lens, on a neck and a base.
+    static void DrawCamera(Graphics g, Brush fill, Brush clear, int s)
+    {
+        float d = s * 0.70f, x = (s - d) / 2, y = s * 0.04f, cx = s / 2f, cy = y + d / 2;
+        g.FillEllipse(fill, x, y, d, d);
+        g.CompositingMode = CompositingMode.SourceCopy;
+        float lens = d * 0.46f;
+        g.FillEllipse(clear, cx - lens / 2, cy - lens / 2, lens, lens);
+        g.CompositingMode = CompositingMode.SourceOver;
+        float pupil = d * 0.22f;
+        g.FillEllipse(fill, cx - pupil / 2, cy - pupil / 2, pupil, pupil);
+        g.FillRectangle(fill, cx - s * 0.05f, y + d - 1, s * 0.10f, s * 0.12f);
+        using (GraphicsPath b = Rounded(new RectangleF(s * 0.24f, y + d + s * 0.10f, s * 0.52f, s * 0.09f), s * 0.045f)) g.FillPath(fill, b);
+    }
+
+    // Storage (pen drive, card reader, external SSD): a drive with its seam and its light.
+    static void DrawDrive(Graphics g, Brush fill, Brush clear, int s)
+    {
+        using (GraphicsPath body = Rounded(new RectangleF(s * 0.06f, s * 0.24f, s * 0.88f, s * 0.52f), s * 0.10f)) g.FillPath(fill, body);
+        g.CompositingMode = CompositingMode.SourceCopy;
+        g.FillRectangle(clear, s * 0.04f, s * 0.53f, s * 0.92f, s * 0.045f);
+        g.FillEllipse(clear, s * 0.71f, s * 0.61f, s * 0.09f, s * 0.09f);
+        g.CompositingMode = CompositingMode.SourceOver;
+    }
+
+    // ------------------------------------------------------------ brand logos
+    // The maker's logo (Brands): a mask tools\Render-BrandLogos.ps1 made from ui\brands, trimmed to
+    // the logo, embedded as brand-<brand>.png. Drawn in one colour, `h` tall, but no wider than
+    // 2.4 h (a wordmark like Acer's gets shorter instead).
+    static readonly Dictionary<string, Bitmap> logos = new Dictionary<string, Bitmap>();
+
+    static Bitmap LogoMask(string brand)
+    {
+        if (string.IsNullOrEmpty(brand)) return null;
+        Bitmap b;
+        if (logos.TryGetValue(brand, out b)) return b;
+        using (Stream res = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand-" + brand + ".png"))
+            b = res == null ? null : new Bitmap(res);
+        logos[brand] = b;
+        return b;
+    }
+
+    static SizeF LogoSize(Bitmap m, float h)
+    {
+        float k = Math.Min(h / m.Height, h * 2.4f / m.Width);
+        return new SizeF(m.Width * k, m.Height * k);
+    }
+
+    // The width the logo takes at height h (0: no logo for that brand).
+    public static float LogoWidth(string brand, float h)
+    {
+        Bitmap m = LogoMask(brand);
+        return m == null ? 0 : LogoSize(m, h).Width;
+    }
+
+    // Draws it with its left edge at x, centred on cy; returns its width (0: none drawn).
+    public static float Logo(Graphics g, string brand, float x, float cy, float h, Color c)
+    {
+        Bitmap m = LogoMask(brand);
+        if (m == null) return 0;
+        SizeF sz = LogoSize(m, h);
+        System.Drawing.Imaging.ColorMatrix cm = new System.Drawing.Imaging.ColorMatrix(new float[][] {
+            new float[] { 0, 0, 0, 0, 0 }, new float[] { 0, 0, 0, 0, 0 }, new float[] { 0, 0, 0, 0, 0 },
+            new float[] { 0, 0, 0, c.A / 255f, 0 }, new float[] { c.R / 255f, c.G / 255f, c.B / 255f, 0, 1 } });
+        InterpolationMode oldI = g.InterpolationMode;
+        using (System.Drawing.Imaging.ImageAttributes ia = new System.Drawing.Imaging.ImageAttributes())
+        {
+            ia.SetColorMatrix(cm);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            RectangleF r = new RectangleF(x, cy - sz.Height / 2, sz.Width, sz.Height);
+            g.DrawImage(m, new PointF[] { r.Location, new PointF(r.Right, r.Top), new PointF(r.Left, r.Bottom) },
+                new RectangleF(0, 0, m.Width, m.Height), GraphicsUnit.Pixel, ia);
+        }
+        g.InterpolationMode = oldI;
+        return sz.Width;
+    }
+
     // Copy the drawn ink so that its bounding box is centred in the bitmap.
     static Bitmap CenterInk(Bitmap src)
     {
@@ -3579,10 +3817,12 @@ class Banner : Form
     readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
     readonly Queue<Action> after = new Queue<Action>();
     Look look = Look.Normal;
-    string title = "", caption = "Audio output", glyph = "speaker", detail = "";
+    string title = "", caption = "Audio output", glyph = "speaker", detail = "", brand;
     int index, count;
     int battery = NoBattery;      // the battery line: percent, -1 unknown, Wired, or NoBattery
     bool charging;
+    int volume = -1;              // the volume line: percent, or -1 for none
+    bool muted;
     DateTime shownAt;
     int holdMs = 2200, baseTop;
     const int NoBattery = -2, Wired = -3;
@@ -3625,15 +3865,28 @@ class Banner : Form
 
     public void ShowDevice(string name, int index, int count)
     {
-        Show("Audio output", name, Audio.Glyph(name), index, count);
+        Show("Audio output", name, Audio.Glyph(name), index, count, Brands.Of(name, null));
     }
 
-    public void Show(string caption, string name, string kind, int index, int count)
+    // brand: the maker's logo before the name (Brands), null for none
+    public void Show(string caption, string name, string kind, int index, int count, string brand = null)
     {
         look = Look.Normal;
         battery = NoBattery;
+        volume = -1;
         holdMs = 2200;
-        Open(caption, name, kind, index, count);
+        Open(caption, name, kind, index, count, brand);
+    }
+
+    // The controller's volume combo: the output's name and, under it, a bar with the percent.
+    public void ShowVolume(string name, int percent, bool mute)
+    {
+        look = Look.Normal;
+        battery = NoBattery;
+        volume = Math.Max(0, Math.Min(100, percent));
+        muted = mute;
+        holdMs = 1600;
+        Open("Volume", name, Audio.Glyph(name), 0, 0, Brands.Of(name, null));
     }
 
     // A device that connected: its name and, under it, its battery (pills, percent, charging). A
@@ -3644,8 +3897,9 @@ class Banner : Form
         look = Look.Normal;
         battery = d.Pad ? (d.Conn == "USB" ? Wired : d.Battery) : (d.Battery >= 0 ? d.Battery : NoBattery);
         charging = d.Charging;
+        volume = -1;
         holdMs = 3500;
-        Open(caption, d.Name, d.Glyph, 0, 0);
+        Open(caption, d.Name, d.Glyph, 0, 0, d.Brand);
     }
 
     // A mouse or keyboard that connected: one small line with its icon, name and battery.
@@ -3654,8 +3908,9 @@ class Banner : Form
         look = Look.Compact;
         battery = d.Battery >= 0 ? d.Battery : NoBattery;
         charging = d.Charging;
+        volume = -1;
         holdMs = 1800;
-        Open("", d.Name, d.Glyph, 0, 0);
+        Open("", d.Name, d.Glyph, 0, 0, d.Brand);
     }
 
     // A device whose battery runs low.
@@ -3664,9 +3919,10 @@ class Banner : Form
         look = Look.Alert;
         battery = Math.Max(0, d.Battery);
         charging = false;
+        volume = -1;
         holdMs = 6000;
         detail = " left · charge it soon";
-        Open(d.Pad ? "Controller battery low" : "Battery low", d.Name, d.Glyph, 0, 0);
+        Open(d.Pad ? "Controller battery low" : "Battery low", d.Name, d.Glyph, 0, 0, d.Brand);
     }
 
     // Shows it now, or once the banner on screen is gone (several devices connected together).
@@ -3675,6 +3931,9 @@ class Banner : Form
         if (Visible && anim.Enabled) after.Enqueue(show);
         else show();
     }
+
+    const float VolBarW = 150, VolBarH = 5;
+    string VolumeText() { return muted ? "Muted" : volume + "%"; }
 
     string BatteryText()
     {
@@ -3694,18 +3953,37 @@ class Banner : Form
 
     static int Measure(Graphics g, string text, Font f) { return (int)Math.Ceiling(g.MeasureString(text, f).Width); }
 
-    void Open(string caption, string name, string kind, int index, int count)
+    // The logo before the name: its height in each look, and the gap after it.
+    float LogoH { get { return look == Look.Compact ? 14 : 18; } }
+    float LogoGap { get { return look == Look.Compact ? 6 : 8; } }
+    int LogoSpace { get { float w = Ui.LogoWidth(brand, LogoH); return w > 0 ? (int)Math.Ceiling(w + LogoGap) : 0; } }
+
+    void Open(string caption, string name, string kind, int index, int count, string brand)
     {
-        this.caption = caption; title = name; glyph = kind; this.index = index; this.count = count;
+        Layout(caption, name, kind, index, count, brand);
         Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-        using (Graphics g = CreateGraphics())
+        baseTop = look == Look.Alert ? wa.Top + 32 : wa.Top + 60;
+        Location = new Point(look == Look.Alert ? wa.Left + (wa.Width - Width) / 2 : wa.Left + 50, baseTop);
+        Invalidate();
+        if (!Visible) { Opacity = 0; Show(); }
+        shownAt = DateTime.Now;
+        anim.Start();
+        Step();
+    }
+
+    // What it says and how big it is, without showing it (Open, and Preview for a visual check).
+    void Layout(string caption, string name, string kind, int index, int count, string brand)
+    {
+        this.caption = caption; title = name; glyph = kind; this.index = index; this.count = count; this.brand = brand;
+        using (Bitmap probe = new Bitmap(1, 1))
+        using (Graphics g = Graphics.FromImage(probe))
         using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
         {
             if (look == Look.Compact)
             {
                 using (Font nf = new Font("Segoe UI Semibold", 14f, GraphicsUnit.Pixel))
                 {
-                    int w = 42 + Measure(g, title, nf) + 14;
+                    int w = 42 + LogoSpace + Measure(g, title, nf) + 14;
                     if (battery >= 0) w += (int)Math.Ceiling(MiniPillsW) + 6 + Measure(g, BatteryText(), cf);
                     Size = new Size(w, 40);
                 }
@@ -3716,7 +3994,7 @@ class Banner : Form
                 using (Font df = new Font("Segoe UI", 13f, GraphicsUnit.Pixel))
                 using (Font bf = new Font("Segoe UI Semibold", 12f, GraphicsUnit.Pixel))
                 {
-                    int textW = Math.Max(Measure(g, title, tf), 18 + Measure(g, caption.ToUpperInvariant(), bf));
+                    int textW = Math.Max(LogoSpace + Measure(g, title, tf), 18 + Measure(g, caption.ToUpperInvariant(), bf));
                     textW = Math.Max(textW, Measure(g, battery + "%" + detail, df) + 6);
                     Size = new Size(Math.Max(380, 112 + textW + 28), 104);
                 }
@@ -3725,20 +4003,34 @@ class Banner : Form
             {
                 using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
                 {
-                    int textW = Math.Max(Measure(g, title, tf), Measure(g, caption.ToUpperInvariant(), cf));
+                    int textW = Math.Max(LogoSpace + Measure(g, title, tf), Measure(g, caption.ToUpperInvariant(), cf));
                     if (battery != NoBattery)
                         textW = Math.Max(textW, (int)Math.Ceiling((battery >= 0 ? BatPillsW + 8 : 0) + g.MeasureString(BatteryText(), cf).Width));
+                    if (volume >= 0) textW = Math.Max(textW, (int)Math.Ceiling(VolBarW + 8 + g.MeasureString(VolumeText(), cf).Width));
                     Size = new Size(Math.Max(240, 88 + textW + 28), 84);
                 }
             }
         }
-        baseTop = look == Look.Alert ? wa.Top + 32 : wa.Top + 60;
-        Location = new Point(look == Look.Alert ? wa.Left + (wa.Width - Width) / 2 : wa.Left + 50, baseTop);
-        Invalidate();
-        if (!Visible) { Opacity = 0; Show(); }
-        shownAt = DateTime.Now;
-        anim.Start();
-        Step();
+    }
+
+    // "Xdeck.exe --banners <file.png>": a sample of each look, for a visual check without devices.
+    public static Bitmap Preview(string look, string caption, Device d)
+    {
+        using (Banner b = new Banner())
+        {
+            b.look = look == "compact" ? Look.Compact : look == "alert" ? Look.Alert : Look.Normal;
+            b.battery = b.look == Look.Alert ? Math.Max(0, d.Battery) : d.Pad ? (d.Conn == "USB" ? Wired : d.Battery) : (d.Battery >= 0 ? d.Battery : NoBattery);
+            b.charging = d.Charging;
+            if (b.look == Look.Alert) b.detail = " left · charge it soon";
+            if (look == "volume") { b.battery = NoBattery; b.volume = d.Battery; b.muted = d.Charging; }   // Battery = the level, Charging = muted
+            b.shownAt = DateTime.Now;
+            b.Layout(caption, d.Name, d.Glyph, 0, 0, d.Brand);
+            Bitmap bmp = new Bitmap(b.Width, b.Height);
+            using (Graphics g = Graphics.FromImage(bmp))
+            using (PaintEventArgs e = new PaintEventArgs(g, new Rectangle(0, 0, b.Width, b.Height)))
+                b.OnPaint(e);
+            return bmp;
+        }
     }
 
     void Step()
@@ -3772,8 +4064,6 @@ class Banner : Form
         else PaintNormal(g);
     }
 
-    static Color Ink(Color accent) { return accent.GetBrightness() < 0.35f ? Color.White : accent; }
-
     void Pills(Graphics g, float x, float y, float w, float h, float gap, Color on)
     {
         int lit = Math.Max(1, (int)Math.Ceiling(battery / (100.0 / Ui.PillCount)));
@@ -3787,8 +4077,10 @@ class Banner : Form
     {
         Color accent = Ui.Accent;
         using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 3, Height);
-        Ui.Icon(g, glyph, new RectangleF(14, 10, 20, 20), Ink(accent));
-        float x = 40;
+        Ui.Icon(g, glyph, new RectangleF(14, 10, 20, 20), Ui.Text);
+        float x = 42;
+        float lw = Ui.Logo(g, brand, x, 20, LogoH, Ui.Text);
+        x = lw > 0 ? x + lw + LogoGap - 2 : 40;
         using (Font nf = new Font("Segoe UI Semibold", 14f, GraphicsUnit.Pixel))
         using (Brush tb = new SolidBrush(Ui.Text))
         {
@@ -3843,9 +4135,10 @@ class Banner : Form
         using (Font bf = new Font("Segoe UI Semibold", 12f, GraphicsUnit.Pixel))
         using (Brush rb = new SolidBrush(Red))
             g.DrawString(caption.ToUpperInvariant(), bf, rb, 130, 16);
+        float lw = Ui.Logo(g, brand, 112, 48, LogoH, Ui.Text);
         using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
         using (Brush tb = new SolidBrush(Ui.Text))
-            g.DrawString(title, tf, tb, 108, 34);
+            g.DrawString(title, tf, tb, lw > 0 ? 112 + lw + LogoGap - 4 : 108, 34);
         using (Font pf = new Font("Segoe UI Semibold", 13f, GraphicsUnit.Pixel))
         using (Font df = new Font("Segoe UI", 13f, GraphicsUnit.Pixel))
         using (Brush rb = new SolidBrush(Red))
@@ -3866,14 +4159,16 @@ class Banner : Form
         using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 4, Height);
         RectangleF disc = new RectangleF(20, 18, 48, 48);
         using (Brush a = new SolidBrush(Color.FromArgb(48, accent))) g.FillEllipse(a, disc);
-        Ui.Icon(g, glyph, new RectangleF(disc.X + 12, disc.Y + 12, disc.Width - 24, disc.Height - 24), Ink(accent));
+        Ui.Icon(g, glyph, new RectangleF(disc.X + 12, disc.Y + 12, disc.Width - 24, disc.Height - 24), Ui.Text);
 
         using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
         using (Brush cb = new SolidBrush(Ui.Dim))
             g.DrawString(caption.ToUpperInvariant(), cf, cb, 86, 16);
+        // the maker's logo in white before the name, as in the panel's controller cards
+        float lw = Ui.Logo(g, brand, 88, 46, LogoH, Ui.Text);
         using (Font tf = new Font("Segoe UI Semibold", 20f, GraphicsUnit.Pixel))
         using (Brush tb = new SolidBrush(Ui.Text))
-            g.DrawString(title, tf, tb, 84, 32);
+            g.DrawString(title, tf, tb, lw > 0 ? 88 + lw + LogoGap - 4 : 84, 32);
 
         // the battery: pills lit by level, then the percent (or USB / unknown)
         if (battery != NoBattery)
@@ -3888,6 +4183,23 @@ class Banner : Form
             using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
             using (Brush tb = new SolidBrush(bc))
                 g.DrawString(BatteryText(), cf, tb, x - 2, 60);
+        }
+
+        // the volume: a bar filled to the level, then the percent (or Muted)
+        else if (volume >= 0)
+        {
+            RectangleF track = new RectangleF(88, 66, VolBarW, VolBarH);
+            using (GraphicsPath p = Ui.Rounded(track, VolBarH / 2))
+            using (Brush b = new SolidBrush(Ui.Faint))
+                g.FillPath(b, p);
+            float fill = track.Width * volume / 100f;
+            if (fill >= VolBarH)
+                using (GraphicsPath p = Ui.Rounded(new RectangleF(track.X, track.Y, fill, track.Height), VolBarH / 2))
+                using (Brush b = new SolidBrush(muted ? Ui.Dim : Ui.Text))
+                    g.FillPath(b, p);
+            using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
+            using (Brush tb = new SolidBrush(muted ? Ui.Dim : Ui.Text))
+                g.DrawString(VolumeText(), cf, tb, track.Right + 6, 60);
         }
 
         // position dots
@@ -4338,6 +4650,10 @@ class XdeckApp : Form
         Combo.Fire = delegate (int dir)
         {
             if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { Cycle(dir); });
+        };
+        Combo.Volume = delegate (int dir)
+        {
+            if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { StepVolume(dir); });
         };
         // Controller panel shortcut (L1 + right + Triangle) -> open / hide the panel; navigation while open.
         PadHooks.Toggle = delegate
@@ -4845,9 +5161,9 @@ class XdeckApp : Form
         if (!outs.IsSubsetOf(knownOut) || !mics.IsSubsetOf(knownMic)) WatchDevices();
         bool said = (DateTime.Now - deviceArrived).TotalSeconds < 15 || DateTime.Now < quietUntil;
         foreach (string id in mics)
-            if (!said && !knownMic.Contains(id)) { banner.Show("Microphone connected", Audio.Name(id), "mic", 0, 0); break; }
+            if (!said && !knownMic.Contains(id)) { string n = Audio.Name(id); banner.Show("Microphone connected", n, "mic", 0, 0, Brands.Of(n, null)); break; }
         foreach (string id in outs)
-            if (!said && !knownOut.Contains(id)) { string n = Audio.Name(id); banner.Show("Audio output connected", n, Audio.Glyph(n), 0, 0); break; }
+            if (!said && !knownOut.Contains(id)) { string n = Audio.Name(id); banner.Show("Audio output connected", n, Audio.Glyph(n), 0, 0, Brands.Of(n, null)); break; }
         knownOut = outs;
         knownMic = mics;
         if (changed && panel.Visible) panel.Reload();
@@ -4870,6 +5186,24 @@ class XdeckApp : Form
                                : ((idx + dir) % active.Count + active.Count) % active.Count;
             Audio.SetDefault(active[next]);
             banner.ShowDevice(Audio.Name(active[next]), next, active.Count);
+            if (panel.Visible) panel.Reload();
+        }
+        catch (Exception ex) { banner.ShowDevice("Error: " + ex.Message, 0, 0); }
+    }
+
+    // The controller's volume combo: the active output up or down 5%, on the 5% steps the panel uses.
+    void StepVolume(int dir)
+    {
+        try
+        {
+            string id = Audio.DefaultId();
+            float level; bool mute;
+            if (id == null || !Audio.GetVolume(id, out level, out mute)) { banner.ShowDevice("No output connected", 0, 0); return; }
+            int pct = (int)Math.Round(level * 100);
+            pct = dir > 0 ? (pct / 5 + 1) * 5 : ((pct + 4) / 5 - 1) * 5;
+            pct = Math.Max(0, Math.Min(100, pct));
+            Audio.SetVolume(id, pct / 100f);                 // above 0 it also un-mutes, like Windows
+            banner.ShowVolume(Audio.Name(id), pct, pct == 0 && mute);
             if (panel.Visible) panel.Reload();
         }
         catch (Exception ex) { banner.ShowDevice("Error: " + ex.Message, 0, 0); }
@@ -4912,7 +5246,7 @@ static class Program
     // "Xdeck.exe --icons <file.png>" renders every icon (banner size and 4x) for a visual check.
     static void IconSheet(string file)
     {
-        string[] kinds = { "pad", "pad:xbox", "pad:dualsense", "pad:switchpro", "pad:joycon", "pad:g29", "pad:handbrake", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard" };
+        string[] kinds = { "pad", "pad:xbox", "pad:dualsense", "pad:switchpro", "pad:joycon", "pad:g29", "pad:handbrake", "monitor", "tv", "headphones", "speaker", "mic", "rec", "live", "bt", "usb", "mouse", "keyboard", "camera", "drive" };
         Color accent = Ui.Accent;
         Color ink = accent.GetBrightness() < 0.35f ? Color.White : accent;
         using (Bitmap bmp = new Bitmap(kinds.Length * 120 + 20, 220))
@@ -4938,10 +5272,53 @@ static class Program
         }
     }
 
+    // "Xdeck.exe --banners <file.png>" renders sample connection banners (every look, with and
+    // without a maker's logo) one under the other, for a visual check without plugging anything in.
+    static void BannerSheet(string file)
+    {
+        object[][] samples = {
+            new object[] { "normal", "Controller connected", new Device { Name = "Xbox", Glyph = "pad:xbox", Brand = "xbox", Pad = true, Conn = "Bluetooth", Battery = 80 } },
+            new object[] { "normal", "Controller connected", new Device { Name = "DualSense", Glyph = "pad:dualsense", Brand = "playstation", Pad = true, Conn = "USB", Battery = -1 } },
+            new object[] { "normal", "Controller connected", new Device { Name = "Pro Controller", Glyph = "pad:switchpro", Brand = "nintendo", Pad = true, Conn = "Bluetooth", Battery = 40, Charging = true } },
+            new object[] { "normal", "Controller connected", new Device { Name = "G29 Racing Wheel", Glyph = "pad:g29", Brand = "logitechg", Pad = true, Conn = "USB" } },
+            new object[] { "normal", "Bluetooth device connected", new Device { Name = "Vanildo's AirPods Pro", Glyph = "headphones", Brand = "apple", Conn = "Bluetooth", Battery = 90 } },
+            new object[] { "normal", "Bluetooth device connected", new Device { Name = "PULSE Elite", Glyph = "headphones", Brand = "playstation", Conn = "Bluetooth", Battery = 55 } },
+            new object[] { "normal", "USB device connected", new Device { Name = "Yeti Classic", Glyph = "mic", Brand = "logitech", Conn = "USB" } },
+            new object[] { "normal", "USB device connected", new Device { Name = "Wireless microphone", Glyph = "mic", Brand = "hollyland", Conn = "USB" } },
+            new object[] { "normal", "USB device connected", new Device { Name = "EMEET SmartCam S600", Glyph = "camera", Conn = "USB" } },
+            new object[] { "normal", "USB device connected", new Device { Name = "SanDisk 3.2Gen1", Glyph = "drive", Conn = "USB" } },
+            new object[] { "normal", "Audio output connected", new Device { Name = "Roku TV", Glyph = "tv", Brand = "roku", Conn = "USB" } },
+            new object[] { "normal", "Audio output connected", new Device { Name = "Acer XV272U", Glyph = "monitor", Brand = "acer", Conn = "USB" } },
+            new object[] { "volume", "Volume", new Device { Name = "Speakers (Realtek(R) Audio)", Glyph = "speaker", Battery = 65 } },
+            new object[] { "volume", "Volume", new Device { Name = "Vanildo's AirPods Pro", Glyph = "headphones", Brand = "apple", Battery = 0, Charging = true } },
+            new object[] { "compact", "", new Device { Name = "Logi M550 L", Glyph = "mouse", Brand = "logitech", Conn = "Receiver", Battery = 70 } },
+            new object[] { "compact", "", new Device { Name = "K400 Plus", Glyph = "keyboard", Brand = "logitech", Conn = "Receiver", Battery = -1 } },
+            new object[] { "alert", "Controller battery low", new Device { Name = "Xbox", Glyph = "pad:xbox", Brand = "xbox", Pad = true, Battery = 12 } },
+            new object[] { "alert", "Battery low", new Device { Name = "Logi M550 L", Glyph = "mouse", Brand = "logitech", Battery = 9 } },
+        };
+        List<Bitmap> shots = new List<Bitmap>();
+        int w = 0, h = 0;
+        foreach (object[] s in samples)
+        {
+            Bitmap b = Banner.Preview((string)s[0], (string)s[1], (Device)s[2]);
+            shots.Add(b);
+            w = Math.Max(w, b.Width); h += b.Height + 12;
+        }
+        using (Bitmap sheet = new Bitmap(w + 24, h + 12))
+        using (Graphics g = Graphics.FromImage(sheet))
+        {
+            g.Clear(Color.FromArgb(12, 12, 14));
+            int y = 12;
+            foreach (Bitmap b in shots) { g.DrawImage(b, 12, y); y += b.Height + 12; b.Dispose(); }
+            sheet.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+        }
+    }
+
     [STAThread]   // must sit directly on Main: WebView2 and the audio COM objects need an STA thread
     static void Main(string[] args)
     {
         if (args.Length >= 2 && args[0] == "--icons") { SetProcessDPIAware(); IconSheet(args[1]); return; }
+        if (args.Length >= 2 && args[0] == "--banners") { SetProcessDPIAware(); BannerSheet(args[1]); return; }
         // the unpacked update copying itself over the installed copy (Updater.Install)
         int oldPid;
         if (args.Length >= 3 && args[0] == "--apply-update" && int.TryParse(args[2], out oldPid))
