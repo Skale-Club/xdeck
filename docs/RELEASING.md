@@ -34,7 +34,7 @@ the manifest signature using `Updater.Verify` before reporting the automatic upd
 As of 2026-11-11, the Surface checkout and GitHub authentication are ready. The original key was
 created on the owner's home computer and still needs to be transferred to the Surface.
 
-The release build (`.uild.ps1 -Release`) runs the self-test (`Xdeck.exe --selftest`: pairing storage, crypto, ping, banner scale, in a temporary data folder) and stops if any check fails. CI (`.github/workflows/ci.yml`) runs the same build plus the node tests on every push to `dev` and `main` and on pull requests; it must be green before a release.
+The release build (`.\build.ps1 -Release`) runs the self-test (`Xdeck.exe --selftest`: pairing storage, crypto, ping, banner scale, in a temporary data folder) and stops if any check fails. CI (`.github/workflows/ci.yml`) runs the same build plus the node tests on every push to `dev` and `main` and on pull requests; it must be green before a release.
 
 ## Phone remote (xdeck.skale.club)
 

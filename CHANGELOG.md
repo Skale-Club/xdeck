@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.9 — 2026-11-16
 
 - **Phone: touchpad settings.** A gear beside the mouse buttons opens pointer speed (0.5x to 2.5x), scroll speed (slow, normal, fast) and reverse scrolling (flips the vertical direction). Saved on the phone; works with any Xdeck version.
 - **Phone: landscape.** The remote now turns: the touchpad fills the height with the mouse buttons beside it, and the header and tab bar get compact.
