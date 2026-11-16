@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **For developers: self-test and CI.** `Xdeck.exe --selftest [report.txt]` checks the `remote.json` pairing round trip across restarts, the phone crypto, `ping`/`pong` and banner scaling in a temporary data folder with no network. `build.ps1` runs it and fails the build on a FAIL; a GitHub Actions workflow (`.github/workflows/ci.yml`) builds and runs it plus the node tests on `dev`, `main` and pull requests.
 - **The phone shows "Connected" only when the PC really answers.** The phone pings the PC
   (encrypted `ping`/`pong`, which also reports the Xdeck version and what it can do) and shows
   "Connecting to PC…", then "Connected", or "PC not responding" with a hint when Xdeck there goes

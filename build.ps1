@@ -55,6 +55,15 @@ Copy-Item (Join-Path $root 'ui') (Join-Path $out 'ui') -Recurse
 Copy-Item (Join-Path $root 'README.md'), (Join-Path $root 'CHANGELOG.md'), (Join-Path $root 'install.ps1') $out
 Write-Host "Built Xdeck $version -> $out"
 
+# the self-test (src\Xdeck.cs, class SelfTest): no UI, no network, a temporary data folder. A FAIL fails
+# the build. Xdeck.exe is a winexe, so it writes its report to a file; 60 s at most, then it is killed.
+$report = Join-Path $root 'build\selftest.txt'
+if (Test-Path $report) { Remove-Item $report -Force }
+$st = Start-Process "$out\Xdeck.exe" -ArgumentList '--selftest', "`"$report`"" -PassThru
+if (-not $st.WaitForExit(60000)) { $st.Kill(); $st.WaitForExit(); throw 'Self-test timed out after 60 s (killed).' }
+if (Test-Path $report) { Get-Content $report | ForEach-Object { Write-Host $_ } } else { Write-Host 'Self-test wrote no report.' }
+if ($st.ExitCode -ne 0) { throw "Self-test failed (exit code $($st.ExitCode)); see build\selftest.txt" }
+
 # XdeckSetup.exe: the installer, with build\Xdeck inside (setup\Setup.cs)
 $payload = Join-Path $tmp 'payload.zip'
 if (Test-Path $payload) { Remove-Item $payload }
