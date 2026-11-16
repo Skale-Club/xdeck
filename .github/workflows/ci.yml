@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -24,6 +26,15 @@ jobs:
 
       - name: Node tests
         run: node --test tests/remote-pairing.test.cjs tests/panel.test.cjs
+
+      # Phone app files changed without a new CACHE in remote/public/sw.js: open phones would not reload.
+      - name: sw.js CACHE bumped when remote/public changed
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        shell: bash
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node tools/check-sw-bump.cjs "${PR_BASE:-${PUSH_BEFORE:-HEAD~1}}"
 
       - name: Upload self-test report
         if: failure()
