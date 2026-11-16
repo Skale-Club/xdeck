@@ -185,10 +185,10 @@ The app makes the phone:
 
 | Tab | What it does |
 |---|---|
-| **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; Left / Middle / Right buttons |
+| **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; Left / Middle / Right buttons. The gear beside them sets the pointer speed (0.5x to 2.5x), the scroll speed (slow, normal, fast) and natural scrolling, saved on the phone. Works in landscape too, with the buttons beside the pad |
 | **Keyboard** | What you type goes to the PC (any language, autocorrect too); Ctrl / Alt / Shift / Win, Esc, Tab, arrows, Alt+Tab, copy / paste |
 | **Media** | Play / pause, previous, next, volume, mute, fullscreen |
-| **Audio** | Like the panel: the outputs and the microphones, the default one checked; tap one to switch to it; volume and mute of each (the PC shows the same banner as the controller's audio shortcut); the screen brightness when the PC has a built-in display (none on a desktop). If the PC does not answer, it says so |
+| **Audio** | Like the panel: the outputs and the microphones, the default one checked; tap one to switch to it; volume and mute of each (the PC shows the same banner as the controller's audio shortcut); the screen brightness when the PC has a built-in display (none on a desktop); the **volume of each app** playing on the PC, with its own mute (Xdeck 0.7.9 or newer); and the **Controllers** block with each connected controller's battery, plus a short alert on the phone when one drops to 15% (0.7.9 or newer). If the PC does not answer, it says so |
 | **Apps** | One button per app the PC has; an app that is not installed gets no button. **OBS Studio**: open / close, then record, pause, stream, save replay, scenes, virtual camera. **Steam**: open / close, Big Picture (and leave it), library, store, friends, downloads, Steam settings. **PC settings**: open Settings, or its Sound, Display, Bluetooth, Wi-Fi, Windows Update or Power page; lock, sleep, restart, shut down (the last three ask first) |
 
 Phone and PC meet through a relay at xdeck.skale.club (a Cloudflare Worker, `remote/`), so the phone

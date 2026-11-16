@@ -1,6 +1,6 @@
 // Xdeck Remote service worker: the app opens even without a connection (it then says the PC is
 // unreachable), and picks up a new version the next time it loads online (network first).
-const CACHE = "xdeck-remote-v9";   // change it on every deploy: open apps reload when sw.js changes
+const CACHE = "xdeck-remote-v10";   // change it on every deploy: open apps reload when sw.js changes
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/fonts/xdeck-brand-bold.woff2"];
 
 self.addEventListener("install", (e) => {

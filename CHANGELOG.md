@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Phone: touchpad settings.** A gear beside the mouse buttons opens pointer speed (0.5x to 2.5x), scroll speed (slow, normal, fast) and natural scrolling (reverses the vertical direction). Saved on the phone; works with any Xdeck version.
+- **Phone: landscape.** The remote now turns: the touchpad fills the height with the mouse buttons beside it, and the header and tab bar get compact.
+- **Phone: volume per app.** The Audio tab lists each app playing on the PC with its own slider and mute (the Windows volume mixer). New `mixer` capability; `appvol` / `appmute` messages. Needs Xdeck 0.7.9 on the PC; older PCs say so.
+- **Phone: controller batteries.** The Audio tab shows each connected controller's battery (new `padbattery` capability and `pads` in the state), and a short toast with one vibration when one drops to 15% or below while the app is open.
 - **Banner settings.** Settings > Banners sets the corner (top left, top right, bottom left, bottom right, top centre), the size (small, normal, large) and **Quiet mode** (on by default: no banners during full-screen games, presentations or Do Not Disturb; low-battery alerts always show), and each change shows a sample banner. Banners now appear on the screen where the mouse is. Stored in `banner.ini` (`corner`, `size`, `quiet`).
 - **For developers: the phone remote deploys itself.** `.github/workflows/deploy-remote.yml` deploys `remote/` to Cloudflare when a release reaches `main` (tests, `sw.js` CACHE check, `wrangler deploy`, live smoke test), so phones no longer get features before the PC release. `tools/check-sw-bump.cjs` (also in CI) fails when `remote/public` changes without a new CACHE in `sw.js`. Setup: docs/RELEASING.md.
 - **For developers: self-test and CI.** `Xdeck.exe --selftest [report.txt]` checks the `remote.json` pairing round trip across restarts, the phone crypto, `ping`/`pong` and banner scaling in a temporary data folder with no network. `build.ps1` runs it and fails the build on a FAIL; a GitHub Actions workflow (`.github/workflows/ci.yml`) builds and runs it plus the node tests on `dev`, `main` and pull requests.

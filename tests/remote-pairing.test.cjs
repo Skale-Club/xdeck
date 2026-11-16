@@ -36,6 +36,7 @@ function app(initialPcs = [], extra = {}) {
   const window = new Element('window');
   const storage = new Map([['xdeck-pcs', JSON.stringify(initialPcs)]]);
   if (initialPcs.length) storage.set('xdeck-current', initialPcs[0].pc);
+  for (const [k, v] of Object.entries(extra.storage || {})) storage.set(k, v);
   const requests = [], timers = new Map();
   let timerId = 0;
   const subtle = {
@@ -288,4 +289,199 @@ test('a legacy PC without apps gets a note naming the needed version, never "Upd
   await h.hear({ t: 'pong', n: 1, ver: '0.7.6', caps: ['input', 'audio'] });
   await h.hear({ t: 'state', outs: [], def: '', vol: 0.5, mute: false });
   assert.match(h.a.el('mics').innerHTML, /(this PC has 0.7.6)/);
+});
+
+// ---- touchpad settings: pointer speed, scroll speed, natural scrolling, saved on the phone ----
+async function drag(h) {   // one finger, 10 px in 1 ms: gain is SPEED * speed * 3.5
+  h.a.run('fingerDown(1, 0, 0, 0); fingerMove(1, 10, 0, 1); fingerUp(1, 400)');
+  await h.fire(12);
+  return h.sent().filter(m => m.t === 'move').map(m => m.dx);
+}
+async function scroll(h, dy) {   // two fingers, the first moves dy: scrollAcc grows by dy / 2
+  h.a.run(`fingerDown(1, 0, 0, 0); fingerDown(2, 50, 0, 0); fingerMove(1, 0, ${dy}, 1); fingerUp(1, 400); fingerUp(2, 400)`);
+  await tick(); await tick();
+  return h.sent().filter(m => m.t === 'scroll').map(m => m.v);
+}
+const pick = (attr, value) => ({ target: { closest: () => ({ dataset: { [attr]: value } }) } });
+
+test('touchpad defaults keep today\'s feel: 1x speed, normal notch, no reversal', async () => {
+  const h = await online();
+  assert.deepEqual({ ...h.a.run('padCfg') }, { speed: 100, scroll: 'normal', natural: false });
+  assert.deepEqual(await drag(h), [56]);
+  assert.deepEqual(await scroll(h, 88), [240]);
+});
+
+test('pointer speed multiplies the gain and is saved; scroll speed changes the notch; natural scrolling reverses', async () => {
+  const h = await online();
+  h.a.el('padSpeed').value = '200'; await h.a.el('padSpeed').emit('input');
+  assert.deepEqual(JSON.parse(h.a.storage.get('xdeck-pad')), { speed: 200, scroll: 'normal', natural: false });
+  assert.match(h.a.el('padSpeedPct').textContent, /^2\.0/);
+  assert.deepEqual(await drag(h), [112]);
+  h.a.el('padSpeed').value = '50'; await h.a.el('padSpeed').emit('input');
+  assert.deepEqual((await drag(h)).slice(-1), [28]);
+  h.a.el('padSpeed').value = '999'; await h.a.el('padSpeed').emit('input');   // clamped to 2.5x
+  assert.equal(h.a.run('padCfg.speed'), 250);
+
+  await h.a.el('padCfg').emit('click', pick('scroll', 'slow'));
+  assert.deepEqual(await scroll(h, 88), [120]);
+  await h.a.el('padCfg').emit('click', pick('scroll', 'fast'));
+  assert.deepEqual((await scroll(h, 88)).slice(-1), [360]);
+  await h.a.el('padCfg').emit('click', pick('scroll', 'normal'));
+  await h.a.el('padNatural').emit('click');
+  assert.equal(h.a.run('padCfg.natural'), true);
+  assert.equal(h.a.el('padNatural').textContent, 'Natural scrolling: On');
+  assert.deepEqual((await scroll(h, 88)).slice(-1), [-240]);
+  assert.deepEqual(JSON.parse(h.a.storage.get('xdeck-pad')), { speed: 250, scroll: 'normal', natural: true });
+});
+
+test('touchpad settings load from storage, clamp bad values, and survive storage that throws', () => {
+  const saved = app([], { storage: { 'xdeck-pad': JSON.stringify({ speed: 150, scroll: 'fast', natural: true }) } });
+  assert.deepEqual({ ...saved.run('padCfg') }, { speed: 150, scroll: 'fast', natural: true });
+  const bad = app([], { storage: { 'xdeck-pad': JSON.stringify({ speed: 9999, scroll: 'bogus', natural: 'yes' }) } });
+  assert.deepEqual({ ...bad.run('padCfg') }, { speed: 250, scroll: 'normal', natural: false });
+  const junk = app([], { storage: { 'xdeck-pad': '{not json' } });
+  assert.deepEqual({ ...junk.run('padCfg') }, { speed: 100, scroll: 'normal', natural: false });
+  assert.equal(junk.run('cleanPad({ speed: 0 }).speed'), 50);
+  // a storage that refuses writes must not break the controls
+  junk.run('localStorage.setItem = () => { throw new Error("full"); }');
+  assert.doesNotThrow(() => junk.run('savePad()'));
+});
+
+test('the gear opens and closes the settings sheet; switching tab closes it', async () => {
+  const a = app();
+  assert.equal(a.el('padCfg').hidden, true);
+  await a.el('padCfgBtn').click(); assert.equal(a.el('padCfg').hidden, false);
+  await a.el('padCfgBtn').click(); assert.equal(a.el('padCfg').hidden, true);
+  await a.el('padCfgBtn').click(); await a.el('padCfgDone').click(); assert.equal(a.el('padCfg').hidden, true);
+  await a.el('padCfgBtn').click();
+  await a.el('tabs').emit('click', { target: { closest: () => ({ dataset: { tab: 'keys' } }) } });
+  assert.equal(a.el('padCfg').hidden, true);
+});
+
+test('the manifest allows landscape and the service worker cache was bumped', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../remote/public/manifest.webmanifest'), 'utf8'));
+  assert.equal(manifest.orientation, 'any');
+  assert.match(fs.readFileSync(path.join(__dirname, '../remote/public/sw.js'), 'utf8'), /xdeck-remote-v(1\d|[2-9]\d)"/);
+  assert.match(html, /@media \(orientation: landscape\)/);
+});
+
+// ---- per-app volume (mixer) ----
+const MIXER = [{ id: '12', name: 'Firefox', vol: 0.5, mute: false }, { id: '40', name: 'Spotify', vol: 0.2, mute: true }];
+const state = extra => ({ t: 'state', outs: [], def: '', vol: 0.5, mute: false, mics: [], apps: [], bright: -1, ...extra });
+
+test('the mixer lists each app with its volume and mute, and sends appvol (throttled) and appmute', async () => {
+  const h = await online();
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.9', caps: ['input', 'audio', 'mixer', 'padbattery', 'ping'] });
+  await h.hear(state({ mixer: MIXER }));
+  assert.equal(h.a.el('mixBox').hidden, false);
+  const list = h.a.el('mixList').innerHTML;
+  assert.match(list, /Firefox/); assert.match(list, /value="50"/); assert.match(list, /Spotify/); assert.match(list, /Muted/);
+  assert.doesNotMatch(list, /Needs Xdeck/);
+
+  const slider = { dataset: { vid: '12' }, value: '30', style: { setProperty() {} } };
+  await h.a.el('mixList').emit('input', { target: slider });
+  slider.value = '35'; await h.a.el('mixList').emit('input', { target: slider });
+  assert.equal(h.sent().filter(m => m.t === 'appvol').length, 0);   // held back 40 ms
+  await h.fire(40);
+  assert.deepEqual(h.sent().filter(m => m.t === 'appvol'), [{ t: 'appvol', id: '12', v: 0.35 }]);
+
+  // while the slider is held a new state does not redraw the list; it catches up on release
+  const before = h.a.el('mixList').innerHTML;
+  await h.hear(state({ mixer: [{ id: '12', name: 'Firefox', vol: 0.9, mute: false }] }));
+  assert.equal(h.a.el('mixList').innerHTML, before);
+  await h.a.el('mixList').emit('change', { target: slider });
+  assert.deepEqual(h.sent().filter(m => m.t === 'appvol').pop(), { t: 'appvol', id: '12', v: 0.35 });
+  assert.match(h.a.el('mixList').innerHTML, /value="90"/);
+
+  await h.a.el('mixList').emit('click', pick('mid', '12')); await tick(); await tick();
+  assert.deepEqual(h.sent().filter(m => m.t === 'appmute'), [{ t: 'appmute', id: '12' }]);
+});
+
+test('an empty mixer says so; a mixer without the caps (error on the PC) stays hidden', async () => {
+  const h = await online();
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.9', caps: ['input', 'audio', 'mixer'] });
+  await h.hear(state({ mixer: [] }));
+  assert.equal(h.a.el('mixBox').hidden, false);
+  assert.match(h.a.el('mixList').innerHTML, /No app is playing sound/);
+  await h.hear(state({}));   // the PC could not list sessions this time: no mixer field
+  assert.equal(h.a.el('mixBox').hidden, true);
+});
+
+test('old PCs: no mixer at all when it never answered ping; one "Needs Xdeck 0.7.9" note after a pong without the cap', async () => {
+  const legacy = await online();
+  await legacy.hear(state({}));
+  assert.equal(legacy.a.run('pcLegacy'), true);
+  assert.equal(legacy.a.el('mixBox').hidden, true);
+  assert.equal(legacy.a.el('padsBox').hidden, true);
+
+  const h = await online();
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.8', caps: ['input', 'audio', 'mics', 'apps', 'bright', 'ping'] });
+  await h.hear(state({}));
+  assert.equal(h.a.el('mixBox').hidden, false);
+  const note = h.a.el('mixList').innerHTML;
+  assert.equal(note.split('Needs Xdeck 0.7.9 or newer').length - 1, 1);
+  assert.match(note, /this PC has 0\.7\.8/);
+  await h.hear(state({}));
+  assert.equal(h.a.el('mixList').innerHTML.split('Needs Xdeck').length - 1, 1);
+  // input keeps working
+  h.a.run('send({ t: "move", dx: 1, dy: 1 })'); await tick(); await tick();
+  assert.ok(h.sent().some(m => m.t === 'move'));
+});
+
+test('a legacy state that does carry a mixer infers the capability and shows it', async () => {
+  const h = await online();
+  await h.hear(state({ mixer: MIXER, pads: [] }));
+  assert.ok(h.a.run('pcCaps').has('mixer') && h.a.run('pcCaps').has('padbattery'));
+  assert.equal(h.a.el('mixBox').hidden, false);
+});
+
+// ---- controllers' batteries ----
+const pads = (...list) => state({ pads: list });
+const xbox = (battery, charging = false) => ({ name: 'Xbox', battery, charging, wired: false });
+
+test('the Controllers block lists each pad with its battery, wired and unknown ones too; hidden with none', async () => {
+  const h = await online();
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.9', caps: ['input', 'padbattery'] });
+  await h.hear(pads(xbox(80), { name: 'Wheel', battery: -1, charging: false, wired: true }, { name: 'Pro', battery: -1, charging: false, wired: false }, xbox(0, true)));
+  assert.equal(h.a.el('padsBox').hidden, false);
+  const html_ = h.a.el('padsList').innerHTML;
+  assert.match(html_, /Xbox/); assert.match(html_, /80%/); assert.match(html_, /Wired/); assert.match(html_, /Battery unknown/);
+  assert.equal((html_.match(/class="on"/g) || []).length, 4 + 0);   // 80% = 4 pills; the 0% charging pad has none
+  await h.hear(pads());
+  assert.equal(h.a.el('padsBox').hidden, true);
+  await h.hear(state({}));
+  assert.equal(h.a.el('padsBox').hidden, true);
+});
+
+test('low battery: one toast and one vibration when it first drops to 15% or below, not again until it charges above 20%', async () => {
+  const buzz = [];
+  const h = await online({ navigator: { vibrate: ms => buzz.push(ms) } });
+  const toast = () => [h.a.el('toast').hidden, h.a.el('toast').textContent];
+  await h.hear(pads(xbox(50)));
+  assert.equal(h.a.el('toast').hidden, true);
+  await h.hear(pads(xbox(16)));
+  assert.equal(h.a.el('toast').hidden, true);
+  await h.hear(pads(xbox(12)));
+  assert.deepEqual(toast(), [false, 'Xbox battery low (12%)']);
+  assert.equal(buzz.length, 1);
+  await h.fire(4500);
+  assert.equal(h.a.el('toast').hidden, true);
+  await h.hear(pads(xbox(11))); await h.hear(pads(xbox(18))); await h.hear(pads(xbox(14)));
+  assert.equal(h.a.el('toast').hidden, true); assert.equal(buzz.length, 1);   // climbed to 18 only: no repeat
+  await h.hear(pads(xbox(30)));                                              // above 20: re-armed
+  await h.hear(pads(xbox(15)));
+  assert.deepEqual(toast(), [false, 'Xbox battery low (15%)']);
+  assert.equal(buzz.length, 2);
+});
+
+test('no low-battery toast for a pad already low when the app opens, one that is charging, or a wired one', async () => {
+  const buzz = [];
+  const h = await online({ navigator: { vibrate: ms => buzz.push(ms) } });
+  await h.hear(pads(xbox(10)));                       // first reading is already low: it is on the list, in red, no toast
+  await h.hear(pads(xbox(9)));
+  await h.hear(pads(xbox(40, true)));
+  await h.hear(pads(xbox(10, true)));                 // charging
+  await h.hear(pads({ name: 'Wheel', battery: 5, charging: false, wired: true }));
+  assert.equal(h.a.el('toast').hidden, true);
+  assert.equal(buzz.length, 0);
 });
