@@ -549,3 +549,25 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Tests: build.ps1 self-test ALL PASS (9); node tests 38/38; check-sw-bump OK. Not verified on a
   real phone (landscape, mixer, pad toast need the phone app deployed) nor GitHub Actions runs
   (need a push). Estimate 2h30, actual ~20 min (09:14 -> 09:35).
+
+## 2026-11-16 - Zera o git: Xdeck 0.7.9 on main (signed release pending the key)
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-16
+- Type: Release
+- Area: Repository, CI/CD
+- Status: main = dev = origin = 32a1d3c (chore: Xdeck 0.7.9). Signed installer/auto-update release
+  NOT published: the update signing key is not on the Surface (checked the app-redirected and the
+  real %APPDATA% via WMI, and XDECK_UPDATE_KEY). Installed PCs stay on 0.7.8 until
+  `.\build.ps1 -Release` runs on main from the computer that holds the key.
+- Summary: VERSION 0.7.9, CHANGELOG closed, RELEASING.md typo fixed; dev fast-forwarded into main
+  and both pushed. First GitHub runs: CI green on main and dev (runner built 0.7.9, self-test ALL
+  PASS, node tests). Deploy phone remote: check job green, deploy job failed at the Cloudflare
+  step because CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not set yet; the live phone app is
+  already this content (manual deploy f47d54a4, cache v10). Nothing left outside dev; no stashes,
+  no extra branches or worktrees.
+- Agent: Claude Code (Opus 5.5, no subagents for this step)
+- Repo / Branch: Skale-Club/xdeck / main, dev
+- Pending (owner): run the signed release from the home PC; add the two Cloudflare secrets and the
+  production environment, then re-run "Deploy phone remote" from the Actions tab.
