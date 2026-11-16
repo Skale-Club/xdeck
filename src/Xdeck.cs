@@ -3121,6 +3121,10 @@ static class Remote
     static readonly object sendLock = new object();
     static string pcId, secret;
     static CngKey key;
+    // The private key as stored in remote.json (protected). Kept as read: a key imported from a blob
+    // has export policy None, so exporting it again throws, and Save used to fail on every start
+    // after the first one (a phone paired then was forgotten when Xdeck restarted).
+    static string keyStored;
     static ClientWebSocket ws;
     static Thread loop;
     static AutoResetEvent wake = new AutoResetEvent(false);
@@ -3142,7 +3146,8 @@ static class Remote
             Dictionary<string, object> d = json.Deserialize<Dictionary<string, object>>(File.ReadAllText(ConfigFile));
             pcId = d.ContainsKey("pc") ? d["pc"] as string : null;
             secret = Unprotect(d.ContainsKey("secret") ? d["secret"] as string : null);
-            string k = Unprotect(d.ContainsKey("key") ? d["key"] as string : null);
+            keyStored = d.ContainsKey("key") ? d["key"] as string : null;
+            string k = Unprotect(keyStored);
             if (k != null) key = CngKey.Import(Convert.FromBase64String(k), CngKeyBlobFormat.EccPrivateBlob);
             System.Collections.ArrayList list = d.ContainsKey("phones") ? d["phones"] as System.Collections.ArrayList : null;
             if (list != null && key != null)
@@ -3154,15 +3159,17 @@ static class Remote
                     try { RemoteCrypto.Derive(key, ph.Pub, out ph.Enc, out ph.Mac); lock (phones) phones.Add(ph); } catch { }
                 }
         }
-        catch { }
+        catch (Exception e) { if (File.Exists(ConfigFile)) Log("remote.json: " + e.Message); }
         if (pcId == null || secret == null || key == null)
         {
             pcId = RemoteCrypto.Random(18);
             secret = RemoteCrypto.Random(32);
             key = RemoteCrypto.NewKey();
+            keyStored = Protect(Convert.ToBase64String(key.Export(CngKeyBlobFormat.EccPrivateBlob)));
             lock (phones) phones.Clear();
             Save();
         }
+        else Save();   // rewrites a remote.json an older Xdeck could not update
         // always connected: the phone app is the remote, there is nothing to turn on
         On = true;
         Start();
@@ -3174,11 +3181,10 @@ static class Remote
         {
             List<object> list = new List<object>();
             foreach (Phone p in Phones) list.Add(new Dictionary<string, object> { { "id", p.Id }, { "name", p.Name }, { "pub", p.Pub } });
-            File.WriteAllText(ConfigFile, json.Serialize(new Dictionary<string, object> {
-                { "pc", pcId }, { "secret", Protect(secret) },
-                { "key", Protect(Convert.ToBase64String(key.Export(CngKeyBlobFormat.EccPrivateBlob))) }, { "phones", list } }));
+            File.WriteAllText(ConfigFile, Json(new Dictionary<string, object> {
+                { "pc", pcId }, { "secret", Protect(secret) }, { "key", keyStored }, { "phones", list } }));
         }
-        catch { }
+        catch (Exception e) { Log("save remote.json: " + e.GetType().Name + ": " + e.Message); }
     }
 
     static string Protect(string s)
@@ -3381,12 +3387,25 @@ static class Remote
         }
         else if (t == "m")
         {
-            Phone p = Find(m["phone"] as string);
-            if (p == null) return;
+            string id = m["phone"] as string;
+            Phone p = Find(id);
+            if (p == null) { Forget(id); return; }
             string plain = RemoteCrypto.Open(p.Enc, p.Mac, m["d"] as string);
             if (plain == null) return;   // not from this phone (or tampered with)
             Handle(Parse(plain), delegate (Dictionary<string, object> reply) { SendTo(p, reply); });
         }
+    }
+
+    // A phone the relay lets in but this PC does not know (its pairing was lost): without its key
+    // nothing it sends can be read, and it would show "Connected" while nothing works. The relay
+    // drops it, and the phone says "Not paired" and offers to pair again.
+    static readonly HashSet<string> forgotten = new HashSet<string>();
+    static void Forget(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        lock (forgotten) if (!forgotten.Add(id)) return;
+        Log("unknown phone " + id + ": unpaired at the relay, it has to pair again");
+        SendRaw(new Dictionary<string, object> { { "t", "unpair" }, { "phone", id } });
     }
 
     static double UnixMs() { return (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds; }
