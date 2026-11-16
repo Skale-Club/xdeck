@@ -60,6 +60,7 @@ static class AppPaths
     }
     public static string DeviceOrder { get { return Path.Combine(Data, "devices.txt"); } }
     public static string ShortcutFile { get { return Path.Combine(Data, "shortcuts.ini"); } }
+    public static string BannerFile { get { return Path.Combine(Data, "banner.ini"); } }
 }
 
 // shortcuts.ini in the data folder: written with the defaults on first run, read at start and again
@@ -4358,6 +4359,82 @@ static class Ui
 //  - compact (top left, one small line): a mouse or keyboard that connects, with its battery;
 //  - alert (top centre, bigger, slides in, its battery pulses): a device whose battery runs low.
 // A click on it closes it.
+// banner.ini in the data folder: where the on-screen banners appear, how big they are, and whether
+// they stay quiet during full-screen games, presentations and Do Not Disturb. Lines are key=value;
+// a missing file or key means the default.
+static class BannerSettings
+{
+    public static readonly string[] Corners = { "top-left", "top-right", "bottom-left", "bottom-right", "top-center" };
+    public static readonly string[] Sizes = { "small", "normal", "large" };
+    static readonly object gate = new object();
+    static string corner = "top-left", size = "normal";
+    static bool quiet = true, loaded;
+
+    static void Ensure()
+    {
+        if (loaded) return;
+        loaded = true;
+        try
+        {
+            string f = AppPaths.BannerFile;
+            if (!File.Exists(f)) return;
+            foreach (string line in File.ReadAllLines(f))
+            {
+                int i = line.IndexOf('=');
+                if (i <= 0) continue;
+                Apply(line.Substring(0, i).Trim().ToLowerInvariant(), line.Substring(i + 1).Trim().ToLowerInvariant());
+            }
+        }
+        catch { }
+    }
+
+    static bool Apply(string key, string val)
+    {
+        if (key == "corner" && Array.IndexOf(Corners, val) >= 0) { corner = val; return true; }
+        if (key == "size" && Array.IndexOf(Sizes, val) >= 0) { size = val; return true; }
+        if (key == "quiet" && (val == "on" || val == "off")) { quiet = val == "on"; return true; }
+        return false;
+    }
+
+    public static string Corner { get { lock (gate) { Ensure(); return corner; } } }
+    public static string Size { get { lock (gate) { Ensure(); return size; } } }
+    public static bool Quiet { get { lock (gate) { Ensure(); return quiet; } } }
+    public static float SizeFactor { get { return FactorOf(Size); } }
+    public static float FactorOf(string sz) { return sz == "small" ? 0.85f : sz == "large" ? 1.25f : 1f; }
+
+    // Sets one value (false for an unknown one) and saves.
+    public static bool Set(string key, string val)
+    {
+        lock (gate)
+        {
+            Ensure();
+            if (!Apply(key, (val ?? "").ToLowerInvariant())) return false;
+            try { File.WriteAllText(AppPaths.BannerFile, "corner=" + corner + "\r\nsize=" + size + "\r\nquiet=" + (quiet ? "on" : "off") + "\r\n"); } catch { }
+            return true;
+        }
+    }
+
+    public static Dictionary<string, object> Json()
+    {
+        return new Dictionary<string, object> { { "corner", Corner }, { "size", Size }, { "quiet", Quiet } };
+    }
+}
+
+// Windows' own answer to "may an app show a notification now?" (SHQueryUserNotificationState).
+static class QuietMode
+{
+    [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
+
+    // 2 busy (a full-screen app), 3 Direct3D full screen (a game), 4 presentation mode, 6 Do Not Disturb.
+    public static bool IsQuietState(int state) { return state == 2 || state == 3 || state == 4 || state == 6; }
+
+    public static bool Now()
+    {
+        try { int st; return SHQueryUserNotificationState(out st) == 0 && IsQuietState(st); }
+        catch { return false; }
+    }
+}
+
 class Banner : Form
 {
     enum Look { Normal, Compact, Alert }
@@ -4380,7 +4457,8 @@ class Banner : Form
     // 96-DPI units, the window is that times the screen's scale, and OnPaint scales the drawing.
     // (It used to be drawn in plain pixels: half size on a 200% screen such as a Surface.)
     public static float ScaleOverride;   // --banners: render at a given scale
-    readonly float s = ScaleOverride > 0 ? ScaleOverride : SystemScale();
+    float s = ScaleOverride > 0 ? ScaleOverride : SystemScale();   // Layout sets it again: the size setting is read at each show
+    float sizeFactor;                                                // 0: from banner.ini; Preview passes its own
     static float SystemScale()
     {
         try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) return Math.Max(1f, g.DpiX / 96f); }
@@ -4531,12 +4609,34 @@ class Banner : Form
     float LogoGap { get { return look == Look.Compact ? 6 : 8; } }
     int LogoSpace { get { float w = Ui.LogoWidth(brand, LogoH); return w > 0 ? (int)Math.Ceiling(w + LogoGap) : 0; } }
 
+    bool sample;      // the "Banner preview": shown even in quiet mode
+    int slide;        // -1: slides in from the top edge, +1: from the bottom edge
+
+    // Where a banner rests: the corner's margins (50 / 60 px scaled, 32 for the alert), or centred
+    // along the top or bottom edge. The low-battery alert stays centred; its edge follows the corner.
+    public static Point Position(Rectangle wa, Size size, string corner, bool alert, float s)
+    {
+        bool bottom = corner == "bottom-left" || corner == "bottom-right";
+        int mx = (int)Math.Round(50 * s), my = (int)Math.Round((alert ? 32 : 60) * s);
+        int y = bottom ? wa.Bottom - size.Height - my : wa.Top + my;
+        int x = alert || corner == "top-center" ? wa.Left + (wa.Width - size.Width) / 2
+              : corner == "top-right" || corner == "bottom-right" ? wa.Right - size.Width - mx
+              : wa.Left + mx;
+        return new Point(x, y);
+    }
+
     void Open(string caption, string name, string kind, int index, int count, string brand)
     {
+        bool force = sample;
+        sample = false;
+        if (!force && look != Look.Alert && BannerSettings.Quiet && QuietMode.Now()) return;   // a game, a presentation or Do Not Disturb
         Layout(caption, name, kind, index, count, brand);
-        Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-        baseTop = wa.Top + (int)Math.Round((look == Look.Alert ? 32 : 60) * s);
-        Location = new Point(look == Look.Alert ? wa.Left + (wa.Width - Width) / 2 : wa.Left + (int)Math.Round(50 * s), baseTop);
+        Rectangle wa = Screen.FromPoint(Cursor.Position).WorkingArea;   // the screen the mouse is on
+        string corner = BannerSettings.Corner;
+        slide = corner == "bottom-left" || corner == "bottom-right" ? 1 : -1;
+        Point p = Position(wa, Size, corner, look == Look.Alert, s);
+        baseTop = p.Y;
+        Location = p;
         Invalidate();
         if (!Visible) { Opacity = 0; Show(); }
         shownAt = DateTime.Now;
@@ -4544,10 +4644,22 @@ class Banner : Form
         Step();
     }
 
+    // The sample banner the panel shows when a banner setting changes.
+    public void ShowSample()
+    {
+        look = Look.Normal;
+        battery = NoBattery;
+        volume = -1;
+        holdMs = 2200;
+        sample = true;
+        Open("Banner preview", "Xdeck", "monitor", 0, 0, null);
+    }
+
     // What it says and how big it is, without showing it (Open, and Preview for a visual check).
     void Layout(string caption, string name, string kind, int index, int count, string brand)
     {
         this.caption = caption; title = name; glyph = kind; this.index = index; this.count = count; this.brand = brand;
+        s = (ScaleOverride > 0 ? ScaleOverride : SystemScale()) * (sizeFactor > 0 ? sizeFactor : BannerSettings.SizeFactor);
         using (Bitmap probe = new Bitmap(1, 1))
         using (Graphics g = Graphics.FromImage(probe))
         using (Font cf = new Font("Segoe UI", 12f, GraphicsUnit.Pixel))
@@ -4587,10 +4699,11 @@ class Banner : Form
     }
 
     // "Xdeck.exe --banners <file.png>": a sample of each look, for a visual check without devices.
-    public static Bitmap Preview(string look, string caption, Device d)
+    public static Bitmap Preview(string look, string caption, Device d, float sizeFactor = 1)
     {
         using (Banner b = new Banner())
         {
+            b.sizeFactor = sizeFactor;
             b.look = look == "compact" ? Look.Compact : look == "alert" ? Look.Alert : Look.Normal;
             b.battery = b.look == Look.Alert ? Math.Max(0, d.Battery) : d.Pad ? (d.Conn == "USB" ? Wired : d.Battery) : (d.Battery >= 0 ? d.Battery : NoBattery);
             b.charging = d.Charging;
@@ -4613,7 +4726,7 @@ class Banner : Form
         {
             double k = t / inMs;
             Opacity = Peak * k;
-            if (look == Look.Alert) Top = baseTop - (int)Math.Round(18 * s * Math.Pow(1 - k, 3));   // slides down into place
+            if (look == Look.Alert) Top = baseTop + slide * (int)Math.Round(18 * s * Math.Pow(1 - k, 3));   // slides in from its edge
         }
         else if (t < inMs + holdMs) { Opacity = Peak; Top = baseTop; }
         else if (t < inMs + holdMs + outMs) Opacity = Peak * (1 - (t - inMs - holdMs) / outMs);
@@ -5075,6 +5188,16 @@ class WebPanel : Form
             case "remote-unpair":
                 try { Remote.Unpair((string)m["id"]); } catch { }
                 break;
+            case "banner":                                      // Settings > Banners: {key: corner|size|quiet, val}
+                try
+                {
+                    object v = m["val"];
+                    string val = v is bool ? ((bool)v ? "on" : "off") : (string)v;
+                    if (BannerSettings.Set((string)m["key"], val) && XdeckApp.BannerSample != null) XdeckApp.BannerSample();
+                }
+                catch { }
+                SendState();
+                break;
             case "mouse":                                       // the switch in a controller's page
                 try
                 {
@@ -5120,6 +5243,7 @@ class WebPanel : Form
                 { "canMouse", Gamepad(p.Kind) && Inputs.Find(p.Kind, p.Index) != null },
                 { "mouse", MouseMode.IsOn(Inputs.Find(p.Kind, p.Index)) } }; }) },
             { "mouseKey", Shortcuts.MouseText },
+            { "banner", BannerSettings.Json() },
             { "upd", UpdateJson() },
             { "devices", DevicesJson() },
             { "remote", RemoteJson() },
@@ -5345,6 +5469,7 @@ class XdeckApp : Form
         Updater.Changed = delegate { if (IsHandleCreated) BeginInvoke((MethodInvoker)UpdateChanged); };
         Updater.Start();
         PanelUpdate = delegate { InstallUpdate(); };
+        BannerSample = delegate { banner.ShowSample(); };
         Thread u = new Thread(delegate ()
         {
             using (EventWaitHandle ev = new EventWaitHandle(false, EventResetMode.AutoReset, "Xdeck_install_update"))
@@ -5405,6 +5530,7 @@ class XdeckApp : Form
 
     // ------------------------------------------------ updates
     public static Action PanelUpdate;     // the panel's "Restart to update"
+    public static Action BannerSample;    // the panel changed a banner setting: show a sample
     ToolStripMenuItem updateItem, checkItem;
     bool trayDot;                         // the tray gear shows the "update ready" dot
     bool userCheck, balloonIsUpdate;
@@ -6039,6 +6165,7 @@ static class SelfTest
             Check("remote ping answers pong", Ping);
             Check("remote ignores unknown type", Unknown);
             Check("banner follows scale", BannerScale);
+            Check("banner size and corner", BannerPlacement);
         }
         catch (Exception e) { failed++; lines.Add("FAIL selftest: " + e.Message); }
         finally
@@ -6168,5 +6295,37 @@ static class SelfTest
             Need(Math.Abs(w2 - 2.0 * w1) <= 4 && Math.Abs(h2 - 2.0 * h1) <= 4, "scale 2 gave " + w2 + "x" + h2 + " for " + w1 + "x" + h1 + " at scale 1");
         }
         finally { Banner.ScaleOverride = 0; }
+    }
+
+    static void BannerPlacement()
+    {
+        Device d = new Device { Name = "Xbox", Glyph = "pad:xbox", Brand = "xbox", Pad = true, Conn = "Bluetooth", Battery = 80 };
+        try
+        {
+            Banner.ScaleOverride = 1;
+            int wn, wl;
+            using (Bitmap b = Banner.Preview("normal", "Controller connected", d, 1f)) wn = b.Width;
+            using (Bitmap b = Banner.Preview("normal", "Controller connected", d, BannerSettings.FactorOf("large"))) wl = b.Width;
+            Need(Math.Abs(wl - 1.25 * wn) <= 6, "large is " + wl + " wide for " + wn + " at normal");
+        }
+        finally { Banner.ScaleOverride = 0; }
+
+        Rectangle wa = new Rectangle(-1920, 100, 1920, 1000);   // a monitor left of the primary one
+        Size sz = new Size(300, 100);
+        foreach (string c in BannerSettings.Corners)
+        {
+            Rectangle r = new Rectangle(Banner.Position(wa, sz, c, false, 1f), sz);
+            Need(wa.Contains(r), c + " is outside the working area: " + r);
+            Rectangle a = new Rectangle(Banner.Position(wa, sz, c, true, 1f), sz);
+            Need(wa.Contains(a), c + " alert is outside the working area: " + a);
+            Need(Math.Abs((a.Left + a.Width / 2) - (wa.Left + wa.Width / 2)) <= 1, c + " alert is not centred");
+        }
+        Point br = Banner.Position(wa, sz, "bottom-right", false, 1f);
+        Need(br.X == wa.Right - 300 - 50 && br.Y == wa.Bottom - 100 - 60, "bottom-right margins: " + br);
+        Point tl = Banner.Position(wa, sz, "top-left", false, 1f);
+        Need(tl.X == wa.Left + 50 && tl.Y == wa.Top + 60, "top-left unchanged: " + tl);
+        Need(Banner.Position(wa, sz, "bottom-left", true, 1f).Y > wa.Top + wa.Height / 2, "bottom alert is not at the bottom");
+        Need(QuietMode.IsQuietState(2) && QuietMode.IsQuietState(3) && QuietMode.IsQuietState(4) && QuietMode.IsQuietState(6)
+             && !QuietMode.IsQuietState(1) && !QuietMode.IsQuietState(5) && !QuietMode.IsQuietState(7), "quiet states");
     }
 }

@@ -30,8 +30,8 @@ function panel() {
       return app.innerHTML;
     },
     message(data) { receive({ data }); return app.innerHTML; },
-    click(act) {
-      appEvents.click({ target: { closest: () => ({ dataset: { act } }) } });
+    click(act, extra = {}) {
+      appEvents.click({ target: { closest: () => ({ dataset: { act, ...extra } }) } });
       return app.innerHTML;
     },
     escape() { documentEvents.keydown({ key: "Escape" }); return app.innerHTML; },
@@ -178,4 +178,24 @@ test("the tray hint shows while the icon is under ^, opens it, and can be dismis
   const dismissed = ui.click("tray-dismiss");
   assert.equal(ui.messages.at(-1).type, "tray-dismiss");
   assert.doesNotMatch(dismissed, /tray-hint/);
+});
+
+test("Settings > Banners shows the choices and applies a change at once", () => {
+  const ui = panel();
+  ui.state({ banner: { corner: "top-left", size: "normal", quiet: true } });
+  const html = ui.click("settings");
+  assert.match(html, /<h2>Banners<\/h2>/);
+  assert.match(html, /data-key="corner" data-val="bottom-right" data-nav="bncorner-bottom-right"/);
+  assert.match(html, /seg-btn on"[^>]*data-val="top-left"/);
+  assert.match(html, /seg-btn on"[^>]*data-val="normal"/);
+  assert.match(html, /role="switch" aria-checked="true"/);
+  const moved = ui.click("banner", { key: "corner", val: "bottom-right" });
+  assert.deepEqual({ ...ui.messages.at(-1) }, { type: "banner", key: "corner", val: "bottom-right" });
+  assert.match(moved, /seg-btn on"[^>]*data-val="bottom-right"/);
+  ui.click("banner", { key: "size", val: "large" });
+  assert.deepEqual({ ...ui.messages.at(-1) }, { type: "banner", key: "size", val: "large" });
+  const quiet = ui.click("banner-quiet");
+  assert.deepEqual({ ...ui.messages.at(-1) }, { type: "banner", key: "quiet", val: false });
+  assert.match(quiet, /role="switch" aria-checked="false"/);
+  assert.match(ui.state({ banner: { corner: "top-center", size: "small", quiet: true } }), /seg-btn on"[^>]*data-val="top-center"/);
 });

@@ -49,6 +49,11 @@ In the panel, the **Settings** gear next to Close opens **Phone remote**. Choose
 code** to pair a phone, see the code's remaining time, or view phones already paired. Generating a
 code requires an internet connection. Back or Escape returns to the audio/device panel.
 
+**Banners**, under it, set the banner's corner (top left, top right, bottom left, bottom right, top
+centre), its size (small, normal, large) and **Quiet mode**: banners stay hidden during full-screen
+games and presentations and while Do Not Disturb is on (low-battery alerts always show). Each change
+shows a sample banner. The choices live in `banner.ini` in the data folder.
+
 ## The panel
 
 | Section | What you can do |
@@ -65,7 +70,7 @@ disconnects. Built-in audio devices remain available while Windows reports them 
 
 ## Devices that connect
 
-Every device that connects shows up in a banner at the top left of the screen: a controller, a
+Every device that connects shows up in a banner (top left by default, on the screen where the mouse is): a controller, a
 Bluetooth device (headphones, mouse, keyboard, phone, speaker) or a USB device (a pen drive, a headset,
 a keyboard, a phone, a webcam), with its battery when it reports one (the pills and the percent,
 *charging*; a controller on a cable says `USB`). A mouse or keyboard gets a small one-line banner

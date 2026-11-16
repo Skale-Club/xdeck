@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Banner settings.** Settings > Banners sets the corner (top left, top right, bottom left, bottom right, top centre), the size (small, normal, large) and **Quiet mode** (on by default: no banners during full-screen games, presentations or Do Not Disturb; low-battery alerts always show), and each change shows a sample banner. Banners now appear on the screen where the mouse is. Stored in `banner.ini` (`corner`, `size`, `quiet`).
 - **For developers: the phone remote deploys itself.** `.github/workflows/deploy-remote.yml` deploys `remote/` to Cloudflare when a release reaches `main` (tests, `sw.js` CACHE check, `wrangler deploy`, live smoke test), so phones no longer get features before the PC release. `tools/check-sw-bump.cjs` (also in CI) fails when `remote/public` changes without a new CACHE in `sw.js`. Setup: docs/RELEASING.md.
 - **For developers: self-test and CI.** `Xdeck.exe --selftest [report.txt]` checks the `remote.json` pairing round trip across restarts, the phone crypto, `ping`/`pong` and banner scaling in a temporary data folder with no network. `build.ps1` runs it and fails the build on a FAIL; a GitHub Actions workflow (`.github/workflows/ci.yml`) builds and runs it plus the node tests on `dev`, `main` and pull requests.
 - **The phone shows "Connected" only when the PC really answers.** The phone pings the PC

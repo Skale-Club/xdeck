@@ -278,6 +278,25 @@ function remoteHtml() {
       </div></div>`;
 }
 
+// Settings > Banners: where the on-screen banners appear, how big, and when they stay quiet.
+const BANNER_CORNERS = [["top-left", "Top left"], ["top-right", "Top right"], ["bottom-left", "Bottom left"], ["bottom-right", "Bottom right"], ["top-center", "Top centre"]];
+const BANNER_SIZES = [["small", "Small"], ["normal", "Normal"], ["large", "Large"]];
+
+function segHtml(key, options, cur) {
+  return `<div class="seg" role="radiogroup">${options.map(([val, label]) =>
+    `<button class="seg-btn${val === cur ? " on" : ""}" role="radio" aria-checked="${val === cur}" data-act="banner" data-key="${key}" data-val="${val}" data-nav="bn${key}-${val}">${label}</button>`).join("")}</div>`;
+}
+
+function bannerSettingsHtml() {
+  const b = state.banner || { corner: "top-left", size: "normal", quiet: true };
+  return `<h2>Banners</h2><p class="settings-lead">Where and how big the on-screen banners appear. Changing a setting shows a sample.</p>
+    <div class="remote-settings banner-settings"><h3>Corner</h3>${segHtml("corner", BANNER_CORNERS, b.corner)}
+      <h3>Size</h3>${segHtml("size", BANNER_SIZES, b.size)}</div>
+    <div class="card switch-row" data-act="banner-quiet" data-nav="bnquiet" role="switch" aria-checked="${b.quiet ? "true" : "false"}">
+      <span class="who"><div class="nm">Quiet mode</div><div class="sub">Hide banners during full-screen games and presentations, and while Do Not Disturb is on</div></span>
+      <span class="switch${b.quiet ? " on" : ""}"><b></b></span></div>`;
+}
+
 function settingsHtml() {
   const r = state.remote || {};
   const hasCode = !!r.code;
@@ -299,7 +318,14 @@ function settingsHtml() {
       h += `<div class="phone-row"><span class="pdot${phone.online ? " on" : ""}"></span><span class="pnm">${esc(phone.name || "Phone")}</span><span class="phone-state">${phone.online ? "Connected" : "Offline"}</span></div>`;
     h += `</div>`;
   }
-  return h + `</div>`;
+  return h + bannerSettingsHtml() + `</div>`;
+}
+
+// applies at once: the panel shows it now, the PC saves it and shows a sample banner
+function setBanner(key, val) {
+  state.banner = { corner: "top-left", size: "normal", quiet: true, ...state.banner, [key]: val };
+  send({ type: "banner", key, val });
+  render();
 }
 
 function openSettings() {
@@ -863,6 +889,8 @@ $app.addEventListener("click", (e) => {
   else if (act === "remote-cancel") send({ type: "remote-cancel" });
   else if (act === "remote-unpair") send({ type: "remote-unpair", id: t.dataset.id });
   else if (act === "check") { send({ type: "check" }); state.upd = { ...state.upd, state: "checking", error: null }; updateUpdates(); }
+  else if (act === "banner") setBanner(t.dataset.key, t.dataset.val);
+  else if (act === "banner-quiet") setBanner("quiet", !(state.banner || { quiet: true }).quiet);
   else if (act === "mouse") {
     const p = state.pads.find((x) => x.key === t.dataset.key);
     if (p) send({ type: "mouse", key: p.key, on: !p.mouse });
