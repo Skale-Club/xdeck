@@ -719,6 +719,48 @@ interface IAudioEndpointVolume
     [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
 }
 
+[Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioSessionManager2
+{
+    int GetAudioSessionControl();     // IAudioSessionManager's two, only here to keep the vtable in place
+    int GetSimpleAudioVolume();
+    [PreserveSig] int GetSessionEnumerator(out IAudioSessionEnumerator enumerator);
+}
+
+[Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioSessionEnumerator
+{
+    [PreserveSig] int GetCount(out int count);
+    [PreserveSig] int GetSession(int index, [MarshalAs(UnmanagedType.IUnknown)] out object session);
+}
+
+[Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioSessionControl2
+{
+    [PreserveSig] int GetState(out int state);                 // IAudioSessionControl's nine
+    int GetDisplayName();
+    int SetDisplayName();
+    int GetIconPath();
+    int SetIconPath();
+    int GetGroupingParam();
+    int SetGroupingParam();
+    int RegisterAudioSessionNotification();
+    int UnregisterAudioSessionNotification();
+    int GetSessionIdentifier();
+    int GetSessionInstanceIdentifier();
+    [PreserveSig] int GetProcessId(out uint pid);
+    [PreserveSig] int IsSystemSoundsSession();                 // S_OK: it is the system sounds
+    int SetDuckingPreference();
+}
+
+[Guid("87CE5498-68D6-44E5-9215-6DA47EF883D8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface ISimpleAudioVolume
+{
+    [PreserveSig] int SetMasterVolume(float level, ref Guid ctx);
+    [PreserveSig] int GetMasterVolume(out float level);
+    [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid ctx);
+    [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
+}
 [Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IAudioClient
 {
@@ -1058,6 +1100,129 @@ static class Audio
         if (Regex.IsMatch(n, @"\btv\b")) return "tv";
         if (n.Contains("monitor") || n.Contains("display")) return "monitor";
         return "speaker";
+    }
+}
+
+
+// The volume of each app playing to the default output (Windows' volume mixer): one entry per
+// process, even when it has several sessions. Used by the phone remote; audio thread only.
+static class Mixer
+{
+    public class Entry { public string Id; public string Name; public float Vol; public bool Mute; }
+
+    static readonly Guid IidManager = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
+    static readonly Dictionary<int, string> names = new Dictionary<int, string>();
+
+    // visit gets the process id and the volume control of each live, non-system session.
+    static void Each(Action<int, ISimpleAudioVolume> visit)
+    {
+        string def = Audio.DefaultId(false);
+        if (def == null) return;
+        IMMDeviceEnumerator e = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+        IMMDevice d;
+        if (e.GetDevice(def, out d) != 0 || d == null) return;
+        Guid iid = IidManager;
+        object o;
+        if (d.Activate(ref iid, 23, IntPtr.Zero, out o) != 0 || o == null) return;
+        IAudioSessionManager2 mgr = (IAudioSessionManager2)o;
+        IAudioSessionEnumerator en = null;
+        try
+        {
+            int n;
+            if (mgr.GetSessionEnumerator(out en) != 0 || en == null || en.GetCount(out n) != 0) return;
+            for (int i = 0; i < n; i++)
+            {
+                object so;
+                if (en.GetSession(i, out so) != 0 || so == null) continue;
+                try
+                {
+                    IAudioSessionControl2 c = (IAudioSessionControl2)so;
+                    int state; uint pid;
+                    if (c.GetState(out state) != 0 || state == 2) continue;        // expired
+                    if (c.IsSystemSoundsSession() == 0) continue;                  // Windows' own sounds
+                    if (c.GetProcessId(out pid) != 0 || pid == 0) continue;
+                    visit((int)pid, (ISimpleAudioVolume)so);
+                }
+                finally { Marshal.ReleaseComObject(so); }
+            }
+        }
+        finally
+        {
+            if (en != null) Marshal.ReleaseComObject(en);
+            Marshal.ReleaseComObject(mgr);
+        }
+    }
+
+    static string NameOf(int pid)
+    {
+        string name;
+        if (names.TryGetValue(pid, out name)) return name;
+        name = "App " + pid;
+        try
+        {
+            using (Process p = Process.GetProcessById(pid))
+            {
+                name = p.ProcessName;
+                try
+                {
+                    string fd = p.MainModule.FileVersionInfo.FileDescription;
+                    if (!string.IsNullOrWhiteSpace(fd)) name = fd.Trim();
+                }
+                catch { }   // a protected process: the process name will do
+            }
+        }
+        catch { }
+        if (names.Count > 200) names.Clear();
+        names[pid] = name;
+        return name;
+    }
+
+    public static List<Entry> List()
+    {
+        Dictionary<int, Entry> by = new Dictionary<int, Entry>();
+        List<Entry> list = new List<Entry>();
+        Each(delegate (int pid, ISimpleAudioVolume v)
+        {
+            if (by.ContainsKey(pid)) return;
+            float level; bool mute;
+            if (v.GetMasterVolume(out level) != 0 || v.GetMute(out mute) != 0) return;
+            Entry en = new Entry { Id = pid.ToString(), Name = NameOf(pid), Vol = (float)Math.Round(level, 3), Mute = mute };
+            by[pid] = en;
+            list.Add(en);
+        });
+        list.Sort(delegate (Entry a, Entry b) { return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase); });
+        return list;
+    }
+
+    // false when no live session belongs to that process (the id is checked against the current sessions)
+    public static bool SetVolume(string id, float level)
+    {
+        int want; if (!int.TryParse(id, out want)) return false;
+        bool found = false;
+        Guid ctx = Guid.Empty;
+        level = Math.Max(0f, Math.Min(1f, level));
+        Each(delegate (int pid, ISimpleAudioVolume v)
+        {
+            if (pid != want) return;
+            found = true;
+            v.SetMasterVolume(level, ref ctx);
+            if (level > 0) v.SetMute(false, ref ctx);       // moving the slider up un-mutes, like Windows
+        });
+        return found;
+    }
+
+    public static bool ToggleMute(string id)
+    {
+        int want; if (!int.TryParse(id, out want)) return false;
+        bool found = false, now = false;
+        Guid ctx = Guid.Empty;
+        Each(delegate (int pid, ISimpleAudioVolume v)
+        {
+            if (pid != want) return;
+            if (!found) { bool cur; if (v.GetMute(out cur) != 0) return; now = !cur; found = true; }
+            v.SetMute(now, ref ctx);
+        });
+        return found;
     }
 }
 
@@ -3491,7 +3656,7 @@ static class Remote
     // What this build can do for a phone. The phone shows a feature only when it is listed here (or,
     // for an older Xdeck that does not answer ping, when its state reply carries the field), so a new
     // feature appends its name to this one list and never needs a phone-side version check.
-    static readonly string[] Caps = { "input", "audio", "mics", "apps", "obs", "bright", "ping" };
+    static readonly string[] Caps = { "input", "audio", "mics", "apps", "obs", "bright", "ping", "mixer", "padbattery" };
 
     internal static void Handle(Dictionary<string, object> m, Action<Dictionary<string, object>> reply)
     {
@@ -3554,6 +3719,21 @@ static class Remote
                         if (id == null) { Log(t + ": no default device"); return; }
                         Audio.SetVolume(id, (float)v);
                         Said(mic ? "micvol" : "vol");
+                    });
+                    break;
+                }
+            case "appvol":    // one app's volume in the mixer (the id is checked against the live sessions)
+            case "appmute":
+                {
+                    string id = m.ContainsKey("id") ? Convert.ToString(m["id"]) : null;
+                    double v = t == "appvol" ? Math.Max(0, Math.Min(1, Convert.ToDouble(m["v"]))) : 0;
+                    RunAudio(delegate
+                    {
+                        bool ok = t == "appvol" ? Mixer.SetVolume(id, (float)v) : Mixer.ToggleMute(id);
+                        if (!ok) Log(t + ": no such app " + id);
+                        // A slider sends a value every 40 ms: like the main volume, no full state for each
+                        // (the 2 s check sends it); a mute toggle answers at once.
+                        if (t == "appmute") Push(true);
                     });
                     break;
                 }
@@ -3712,6 +3892,12 @@ static class Remote
         catch (Exception e) { Log("apps: " + e.Message); }
         st["apps"] = apps;
         st["bright"] = Brightness.Get();   // -1: no brightness control here, the phone hides it
+        try { st["mixer"] = Mixer.List().ConvertAll(delegate (Mixer.Entry en) { return (object)new Dictionary<string, object> { { "id", en.Id }, { "name", en.Name }, { "vol", en.Vol }, { "mute", en.Mute } }; }); }
+        catch (Exception e) { Log("mixer: " + e.GetType().Name + ": " + e.Message); }   // no "mixer": the phone hides the list
+        List<object> pads = new List<object>();
+        foreach (Pad p in XdeckApp.PadsNow)
+            pads.Add(new Dictionary<string, object> { { "name", p.Name }, { "battery", p.Battery }, { "charging", p.Charging }, { "wired", p.Conn == "USB" } });
+        st["pads"] = pads;
         return st;
     }
 }
@@ -5778,6 +5964,7 @@ class XdeckApp : Form
     // charged or came back up).
     const int LowBattery = 15, PadBatteryWaitMs = 5000, BatteryWaitMs = 3000, QuietReconnectS = 60, AfterWakeS = 30;
     public static volatile List<Device> PanelDevices = new List<Device>();
+    public static volatile List<Pad> PadsNow = new List<Pad>();   // the connected controllers, replaced whole by each scan (the phones read it)
     System.Windows.Forms.Timer scan;
     HashSet<string> known;                                          // null until the first scan
     readonly Dictionary<string, DateTime> arrived = new Dictionary<string, DateTime>();   // connected, banner not shown yet
@@ -5802,6 +5989,7 @@ class XdeckApp : Form
         }
         catch { return; }
         UpdateTrayText(pads);
+        PadsNow = pads.ConvertAll(delegate (Pad p) { return new Pad { Mac = p.Mac, Kind = p.Kind, Name = p.Name, Connected = true, Battery = p.Battery, Charging = p.Charging, Index = p.Index, Conn = p.Conn }; });
         // the panel's Devices section: every wireless device, plus mice and keyboards on USB
         // (a wireless receiver), mice and keyboards first
         List<Device> shown = all.FindAll(delegate (Device x) { return !x.Pad && (x.Conn == "Bluetooth" || x.Conn == "Receiver" || x.Input); });
@@ -6163,6 +6351,7 @@ static class SelfTest
             Check("crypto tamper and wrong key rejected", Tamper);
             Check("crypto ECDH both sides agree", Ecdh);
             Check("remote ping answers pong", Ping);
+            Check("remote state has pads, mixer is a list or absent", RemoteExtras);
             Check("remote ignores unknown type", Unknown);
             Check("banner follows scale", BannerScale);
             Check("banner size and corner", BannerPlacement);
@@ -6270,6 +6459,22 @@ static class SelfTest
         Need(got["ver"] as string == Updater.Current, "wrong ver");
         List<object> caps = got["caps"] as List<object>;
         Need(caps != null && caps.Contains("ping") && caps.Contains("input"), "caps lack ping/input");
+    }
+
+    static void RemoteExtras()
+    {
+        // State() is built on the audio thread in the app; the same call must hold up with no phone and no sound
+        System.Reflection.MethodInfo mi = typeof(Remote).GetMethod("State", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Need(mi != null, "no State()");
+        Dictionary<string, object> st = (Dictionary<string, object>)mi.Invoke(null, null);
+        Need(st["pads"] is List<object>, "pads is not a list");
+        Need(!st.ContainsKey("mixer") || st["mixer"] is List<object>, "mixer is not a list");
+        Dictionary<string, object> got = null;
+        Dictionary<string, object> m = new Dictionary<string, object>();
+        m["t"] = "ping";
+        Remote.Handle(m, delegate (Dictionary<string, object> r) { got = r; });
+        List<object> caps = got["caps"] as List<object>;
+        Need(caps.Contains("mixer") && caps.Contains("padbattery"), "caps lack mixer/padbattery");
     }
 
     static void Unknown()
