@@ -474,7 +474,7 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Date: 2026-11-15
 - Type: Feature
 - Area: Panel, phone remote, PC host
-- Status: Merged into dev locally and installed on the Surface; push, relay deploy and release pending the owner's OK
+- Status: In dev (pushed), installed on the Surface, phone app deployed (version 8a707ddd, cache v7); signed release 0.7.9 pending on the desktop
 - Summary: New Brightness class (WMI WmiMonitorBrightness / WmiSetBrightness) for the built-in
   display. It reads at most once a second, sets values on a worker thread (latest value wins), and
   returns -1 when the PC has no brightness control (a desktop with external monitors), checking
