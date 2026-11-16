@@ -524,8 +524,8 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Date: 2026-11-16
 - Type: Feature + infrastructure
 - Area: Phone remote, PC host, banners, CI/CD
-- Status: Merged into dev locally (not pushed); installed on the Surface; phone app NOT deployed
-  (live site still cache v8; dev has v10). Release (VERSION 0.7.8 -> 0.7.9) pending owner OK.
+- Status: Merged into dev locally (not pushed); installed on the Surface; phone app deployed from dev
+  (version f47d54a4, cache v10) for the owner to test. Release (VERSION 0.7.8 -> 0.7.9) pending owner OK.
 - Summary:
   - Banners follow the display scale (were half size at 200%).
   - Health: phone pings the PC (ping/pong with ver + caps); "Connected" only when the PC answers,
