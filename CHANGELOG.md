@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Screen brightness**, in the panel and on the phone remote (Audio tab): a slider like the volume's,
+  for the built-in display of a laptop, tablet or all-in-one (the same control as Windows' brightness
+  slider). A PC without one, such as a desktop with external monitors, shows no brightness control at
+  all. Moving it from the phone shows a Brightness banner with a level bar on the PC.
+
 ## 0.7.8 — 2026-11-14
 
 - **New volume sliders**, in the panel and in the phone remote: a thick rounded track, the filled

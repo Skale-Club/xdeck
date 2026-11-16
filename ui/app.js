@@ -1,5 +1,6 @@
 // Xdeck UI. The native host (Xdeck.exe) sends:
-//   {type:"state", accent, outs:[{id,name,kind}], mics:[...], defOut, defMic, pads:[{key,kind,name,index,battery,charging,conn}]}
+//   {type:"state", accent, outs:[{id,name,kind}], mics:[...], defOut, defMic, bright (0..100, -1: none),
+//    pads:[{key,kind,name,index,battery,charging,conn}]}
 //   {type:"levels", levels:{endpointId: 0..1}}
 //   {type:"show", pad, combo}                   the window was just opened (pad: from the controller shortcut;
 //                                               combo: that shortcut as written in shortcuts.ini, "" if off)
@@ -131,7 +132,21 @@ function setVolume(row, pct) {
   row.querySelector(".pct").textContent = pct + "%";
   row.classList.remove("muted");
   clearTimeout(volTimer);                     // ~30 messages a second at most while dragging
-  volTimer = setTimeout(() => send({ type: "volume", id: row.dataset.id, v: pct / 100 }), 30);
+  volTimer = setTimeout(() => send(row.dataset.bright
+    ? { type: "brightness", v: pct / 100 }
+    : { type: "volume", id: row.dataset.id, v: pct / 100 }), 30);
+}
+
+// The built-in display's brightness (laptop, tablet): only when the PC has one (state.bright >= 0);
+// a desktop's monitors have none, so there is no slider at all.
+I.sun = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.3M12 19.2v2.3M2.5 12h2.3M19.2 12h2.3M5.3 5.3L7 7M17 17l1.7 1.7M5.3 18.7L7 17M17 7l1.7-1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+function brightHtml() {
+  if (!(typeof state.bright === "number" && state.bright >= 0)) return "";
+  const pct = Math.round(state.bright);
+  return `<h2>Brightness</h2><div class="dev"><div class="vol bright" data-bright="1" data-nav="vol-bright">
+      <span class="mute">${I.sun}</span>
+      <input type="range" min="0" max="100" value="${pct}" style="--p:${pct}%" aria-label="Brightness">
+      <span class="pct">${pct}%</span></div></div>`;
 }
 
 $app.addEventListener("input", (e) => {
@@ -208,6 +223,7 @@ function panelHtml() {
   let h = `<div class="view panel"><header><img class="brand-icon" src="brands/xdeck-app.png" alt=""><h1 class="brand-name">Xdeck</h1><button class="icon-btn" data-act="settings" data-nav="settings" title="Settings" aria-label="Settings">${I.gear}</button><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
+  h += brightHtml();
   if (state.pads.length) h += `<h2>Controllers</h2>`;
   for (const p of state.pads)
     h += `<div class="card" data-act="test" data-key="${esc(p.key)}" data-nav="card-${esc(p.key)}">

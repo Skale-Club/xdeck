@@ -30,6 +30,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Management;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -810,6 +811,107 @@ interface IPolicyConfig
 
 [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")]
 class CPolicyConfigClient { }
+
+// Screen brightness of the built-in display (laptop, tablet, all-in-one), through WMI's
+// WmiMonitorBrightness, the same control as Windows' brightness slider. A desktop's external
+// monitors have none: Get() is -1 there and the panel and the phone show no brightness control.
+// WMI is slow (tens of ms), so the level is read at most once a second and set on a worker thread
+// that always applies the latest value asked for.
+static class Brightness
+{
+    static readonly object sync = new object();
+    static int cached = -1;          // the last level read or set, -1: none
+    static DateTime readAt;          // when cached was read
+    static DateTime retryAt;         // no brightness control: look again after this
+    static int pending = -1;         // the level the worker applies next
+    static bool busy;
+
+    // 0..100, or -1 when this PC has no brightness control
+    public static int Get()
+    {
+        lock (sync)
+        {
+            if (cached >= 0 && (DateTime.UtcNow - readAt).TotalMilliseconds < 1000) return cached;
+            if (cached < 0 && DateTime.UtcNow < retryAt) return -1;
+            if (busy) return cached;   // a change is on its way: keep what was asked for
+        }
+        int level = Read();
+        lock (sync)
+        {
+            if (busy) return cached;
+            cached = level;
+            readAt = DateTime.UtcNow;
+            if (level < 0) retryAt = DateTime.UtcNow.AddSeconds(60);   // a monitor can come later
+            return level;
+        }
+    }
+
+    public static void Set(int percent)
+    {
+        percent = Math.Max(0, Math.Min(100, percent));
+        lock (sync)
+        {
+            if (cached < 0) return;          // nothing to control here
+            cached = percent;
+            readAt = DateTime.UtcNow;
+            pending = percent;
+            if (busy) return;
+            busy = true;
+        }
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            while (true)
+            {
+                int v;
+                lock (sync)
+                {
+                    v = pending;
+                    pending = -1;
+                    if (v < 0) { busy = false; readAt = DateTime.UtcNow; return; }
+                }
+                Write(v);
+            }
+        });
+    }
+
+    static bool ActiveMonitor(ManagementBaseObject o)
+    {
+        object a = o["Active"];
+        return !(a is bool) || (bool)a;
+    }
+
+    static int Read()
+    {
+        try
+        {
+            using (ManagementObjectSearcher s = new ManagementObjectSearcher("root\\WMI", "SELECT Active, CurrentBrightness FROM WmiMonitorBrightness"))
+            using (ManagementObjectCollection all = s.Get())
+                foreach (ManagementBaseObject o in all)
+                    using (o)
+                        if (ActiveMonitor(o)) return Math.Max(0, Math.Min(100, Convert.ToInt32(o["CurrentBrightness"])));
+        }
+        catch { }   // "Not supported": no built-in display
+        return -1;
+    }
+
+    static void Write(int percent)
+    {
+        try
+        {
+            using (ManagementObjectSearcher s = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods"))
+            using (ManagementObjectCollection all = s.Get())
+                foreach (ManagementBaseObject b in all)
+                    using (b)
+                    {
+                        ManagementObject o = b as ManagementObject;
+                        if (o == null || !ActiveMonitor(o)) continue;
+                        o.InvokeMethod("WmiSetBrightness", new object[] { (uint)1, (byte)percent });
+                        return;
+                    }
+        }
+        catch (Exception e) { Remote.Log("brightness: " + e.Message); }
+    }
+}
 
 static class Audio
 {
@@ -3332,7 +3434,7 @@ static class Remote
 
     // remote.log in the data folder: what went wrong with a phone's request (it says nothing back).
     static readonly object logLock = new object();
-    static void Log(string text)
+    public static void Log(string text)
     {
         lock (logLock)
             try
@@ -3414,6 +3516,17 @@ static class Remote
                         if (id == null) { Log(t + ": no default device"); return; }
                         Audio.SetVolume(id, (float)v);
                         Said(mic ? "micvol" : "vol");
+                    });
+                    break;
+                }
+            case "bright":   // the built-in display's brightness, 0..1 (only offered when the PC has one)
+                {
+                    int p = (int)Math.Round(Math.Max(0, Math.Min(1, Convert.ToDouble(m["v"]))) * 100);
+                    RunAudio(delegate
+                    {
+                        if (Brightness.Get() < 0) { Log("bright: no brightness control on this PC"); return; }
+                        Brightness.Set(p);
+                        Said("bright");
                     });
                     break;
                 }
@@ -3548,6 +3661,7 @@ static class Remote
         }
         catch (Exception e) { Log("apps: " + e.Message); }
         st["apps"] = apps;
+        st["bright"] = Brightness.Get();   // -1: no brightness control here, the phone hides it
         return st;
     }
 }
@@ -4272,6 +4386,17 @@ class Banner : Form
         Open("Volume", name, Audio.Glyph(name), 0, 0, Brands.Of(name, null));
     }
 
+    // The phone moved the screen brightness: the same bar as the volume.
+    public void ShowBrightness(int percent)
+    {
+        look = Look.Normal;
+        battery = NoBattery;
+        volume = Math.Max(0, Math.Min(100, percent));
+        muted = false;
+        holdMs = 1600;
+        Open("Brightness", "Built-in display", "monitor", 0, 0, null);
+    }
+
     // A device that connected: its name and, under it, its battery (pills, percent, charging). A
     // controller always has the line (USB, or battery unknown); another device only when it
     // reports a battery.
@@ -4862,6 +4987,9 @@ class WebPanel : Form
             case "volume":                                      // live while the slider moves; no state echo
                 try { Audio.SetVolume((string)m["id"], (float)Convert.ToDouble(m["v"])); } catch { }
                 break;
+            case "brightness":                                  // the same, for the built-in display
+                try { Brightness.Set((int)Math.Round(Convert.ToDouble(m["v"]) * 100)); } catch { }
+                break;
             case "mute":
                 try { Audio.SetMute((string)m["id"], Convert.ToBoolean(m["m"])); } catch { }
                 SendState();
@@ -4919,6 +5047,7 @@ class WebPanel : Form
             { "outs", outs.ConvertAll(EndpointJson) },
             { "mics", mics.ConvertAll(EndpointJson) },
             { "defOut", defOut }, { "defMic", defMic },
+            { "bright", Brightness.Get() },                 // -1: no brightness control, no slider
             { "pads", pads.ConvertAll(delegate (Pad p) { return (object)new Dictionary<string, object> {
                 { "key", p.Mac }, { "kind", p.Kind }, { "name", p.Name }, { "index", p.Index },
                 { "battery", p.Battery }, { "charging", p.Charging }, { "conn", p.Conn },
@@ -5613,6 +5742,13 @@ class XdeckApp : Form
     {
         try
         {
+            if (what == "bright")
+            {
+                int b = Brightness.Get();
+                if (b >= 0) banner.ShowBrightness(b);
+                if (panel.Visible) panel.Reload();
+                return;
+            }
             bool mic = what == "mic" || what == "micvol";
             string id = Audio.DefaultId(mic);
             if (id == null) return;

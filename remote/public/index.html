@@ -95,6 +95,9 @@
   .vol input:active::-webkit-slider-thumb { width: 2px; }
   .vol .pct { width: 52px; text-align: right; color: var(--dim); font-weight: 600; font-size: 13px; }
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
+  .vol .sun { display: grid; place-items: center; padding: 4px; color: var(--text); }
+  #brightBox { display: flex; flex-direction: column; gap: 12px; }
+  #brightBox[hidden] { display: none; }
   .vol svg { width: 24px; height: 24px; }
   .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; margin: 0; }
   .btn.danger { color: #ff8a80; }
@@ -252,6 +255,14 @@
       <span class="pct" id="micPct">–</span>
     </div>
     <div class="outs" id="mics"></div>
+    <div id="brightBox" hidden>
+      <div class="lbl">Brightness</div>
+      <div class="vol">
+        <span class="sun"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.3M12 19.2v2.3M2.5 12h2.3M19.2 12h2.3M5.3 5.3L7 7M17 17l1.7 1.7M5.3 18.7L7 17M17 7l1.7-1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <input type="range" id="bright" min="0" max="100" step="1" value="0" aria-label="Screen brightness">
+        <span class="pct" id="brightPct">–</span>
+      </div>
+    </div>
   </section>
 
   <section id="tab-apps">
@@ -789,6 +800,27 @@ const outs = device("out"), mics = device("mic");
 $("muteBtn").addEventListener("click", () => { send({ t: "mute" }); vibrate(10); });
 $("micMuteBtn").addEventListener("click", () => { send({ t: "micmute" }); vibrate(10); });
 
+// The built-in display's brightness: the PC sends bright 0..100 when it has one (laptop, tablet),
+// -1 (or nothing, an older Xdeck) when it has not, and then the control is not shown at all.
+const bright = { range: $("bright"), pct: $("brightPct"), sliding: false, timer: 0 };
+const brightFill = () => bright.range.style.setProperty("--p", bright.range.value + "%");
+bright.range.addEventListener("input", () => {
+  bright.sliding = true;
+  bright.pct.textContent = bright.range.value + "%";
+  brightFill();
+  clearTimeout(bright.timer);
+  bright.timer = setTimeout(() => send({ t: "bright", v: bright.range.value / 100 }), 40);
+});
+bright.range.addEventListener("change", () => { bright.sliding = false; clearTimeout(bright.timer); send({ t: "bright", v: bright.range.value / 100 }); });
+function showBright(v) {
+  const has = typeof v === "number" && v >= 0;
+  $("brightBox").hidden = !has;
+  if (!has || bright.sliding) return;
+  bright.range.value = Math.round(v);
+  bright.pct.textContent = bright.range.value + "%";
+  brightFill();
+}
+
 function onState(m) {
   if (m.t !== "state") return;
   gotState = true;
@@ -802,6 +834,7 @@ function onState(m) {
   $("muteWaves").style.display = m.mute ? "none" : "";
   $("muteSlash").style.display = m.mute ? "" : "none";
   $("micSlash").style.display = m.micMute ? "" : "none";
+  showBright(m.bright);
 }
 
 // ------------------------------------------------------------ apps

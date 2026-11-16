@@ -55,6 +55,7 @@ code requires an internet connection. Back or Escape returns to the audio/device
 |---|---|
 | **Audio output** | See the active output and its live level. Click it to list the others and pick one. Volume slider (drag or scroll), mute. |
 | **Microphone** | The same for the default microphone; it is also set as the communications device, so calls use it. |
+| **Brightness** | Only on a PC with a built-in display (laptop, tablet, all-in-one): its brightness, drag or scroll. A desktop has none, so the section is not shown. |
 | **Controllers** | Every connected controller with its battery (10 pills, a bolt while charging) or `USB`. Click one to test it. |
 | **Devices** | Named mice, keyboards and other wireless peripherals, with their battery when reported. Surface Type Cover is identified as a keyboard. Unidentified USB entries are omitted. |
 | **Updates** | Only while an update is on its way: a progress bar while it downloads, then **Restart to update**. Otherwise just the version. |
@@ -182,7 +183,7 @@ The app makes the phone:
 | **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; Left / Middle / Right buttons |
 | **Keyboard** | What you type goes to the PC (any language, autocorrect too); Ctrl / Alt / Shift / Win, Esc, Tab, arrows, Alt+Tab, copy / paste |
 | **Media** | Play / pause, previous, next, volume, mute, fullscreen |
-| **Audio** | Like the panel: the outputs and the microphones, the default one checked; tap one to switch to it; volume and mute of each (the PC shows the same banner as the controller's audio shortcut). If the PC does not answer, it says so |
+| **Audio** | Like the panel: the outputs and the microphones, the default one checked; tap one to switch to it; volume and mute of each (the PC shows the same banner as the controller's audio shortcut); the screen brightness when the PC has a built-in display (none on a desktop). If the PC does not answer, it says so |
 | **Apps** | One button per app the PC has; an app that is not installed gets no button. **OBS Studio**: open / close, then record, pause, stream, save replay, scenes, virtual camera. **Steam**: open / close, Big Picture (and leave it), library, store, friends, downloads, Steam settings. **PC settings**: open Settings, or its Sound, Display, Bluetooth, Wi-Fi, Windows Update or Power page; lock, sleep, restart, shut down (the last three ask first) |
 
 Phone and PC meet through a relay at xdeck.skale.club (a Cloudflare Worker, `remote/`), so the phone
