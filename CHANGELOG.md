@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Paired phones are no longer forgotten when Xdeck restarts.** Since 0.6, `remote.json` could
+  only be written on the very first start: later starts load the PC's key from the file, and a key
+  loaded that way cannot be exported again, so every save failed silently. A phone paired after
+  that worked until Xdeck restarted (an update, a reboot), then showed "Connected" while nothing it
+  sent did anything. Xdeck now keeps the stored key as it is, and save errors go to `remote.log`.
+- **The phone app updates itself.** An installed app on Android stays open in the background for
+  days, so it kept an old version (an OBS tab instead of Apps) until it was closed from the recent
+  apps. Each time it comes back to the screen it now checks for a new version and reloads into it
+  (never while a finger is on the touchpad or during a pairing).
+- A phone the PC no longer knows (its pairing was lost) is told so: the relay drops it and the
+  phone shows "Not paired" and the pairing screen, instead of "Connected" with nothing working.
 - **Screen brightness**, in the panel and on the phone remote (Audio tab): a slider like the volume's,
   for the built-in display of a laptop, tablet or all-in-one (the same control as Windows' brightness
   slider). A PC without one, such as a desktop with external monitors, shows no brightness control at

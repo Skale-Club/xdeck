@@ -10,7 +10,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const response = (body, ok = true) => ({ ok, json: async () => body });
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 
-function app(initialPcs = []) {
+function app(initialPcs = [], extra = {}) {
   const elements = new Map();
   let document;
   class Element {
@@ -44,9 +44,10 @@ function app(initialPcs = []) {
     digest: async () => new Uint8Array(32).buffer,
   };
   const context = vm.createContext({
-    document, window, navigator: { userAgent: 'iPhone', onLine: true },
+    document, window, navigator: { userAgent: 'iPhone', onLine: true, ...extra.navigator },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
-    location: { protocol: 'https:', host: 'test.local' }, matchMedia: () => ({ matches: false }),
+    location: { protocol: 'https:', host: 'test.local', ...extra.location }, matchMedia: () => ({ matches: false }),
+    setInterval: () => 0,
     crypto: { subtle }, AbortController, TextEncoder, TextDecoder, Uint8Array,
     btoa: s => Buffer.from(s, 'binary').toString('base64'), atob: s => Buffer.from(s, 'base64').toString('binary'),
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), performance: { now: () => 0 },
@@ -158,4 +159,38 @@ test('pairing timeout unlocks and refocuses code, clears timer and allows an exp
   assert.equal(JSON.parse(a.requests[1].options.body).code, '654321');
   a.requests[1].resolve(response({ error: 'Code expired' }, false)); await tick();
   assert.equal(a.timers.size, 0); assert.equal(a.el('pairBack').disabled, false);
+});
+
+// An installed app stays open for days: when a new service worker takes over (a deploy), the page
+// reloads, but only on screen, with no finger on the touchpad, and not on the very first install.
+function swApp(hadWorker) {
+  const sw = { controller: hadWorker ? {} : null, handlers: {}, updates: 0,
+    register: () => Promise.resolve(), getRegistration: () => Promise.resolve({ update: () => { sw.updates++; } }),
+    addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); } };
+  const reloads = [];
+  const a = app([], { navigator: { serviceWorker: sw }, location: { reload: () => reloads.push(1) } });
+  const takeOver = () => sw.handlers.controllerchange.forEach(fn => fn());
+  return { a, sw, reloads, takeOver };
+}
+
+test('a new deploy reloads an open app when it is on screen and idle', async () => {
+  const { a, sw, reloads, takeOver } = swApp(true);
+  a.document.hidden = true;
+  takeOver();
+  assert.equal(reloads.length, 0, 'not while in the background');
+  a.run('touches.set(1, {})');
+  a.document.hidden = false;
+  await a.document.emit('visibilitychange');
+  await tick();
+  assert.equal(sw.updates, 1, 'coming back asks for a new sw.js');
+  assert.equal(reloads.length, 0, 'not with a finger on the touchpad');
+  a.run('touches.clear()');
+  await a.document.emit('visibilitychange');
+  assert.equal(reloads.length, 1);
+});
+
+test('the first install of the service worker does not reload the page', () => {
+  const { reloads, takeOver } = swApp(false);
+  takeOver();
+  assert.equal(reloads.length, 0);
 });
