@@ -291,7 +291,7 @@ test('a legacy PC without apps gets a note naming the needed version, never "Upd
   assert.match(h.a.el('mics').innerHTML, /(this PC has 0.7.6)/);
 });
 
-// ---- touchpad settings: pointer speed, scroll speed, natural scrolling, saved on the phone ----
+// ---- touchpad settings: pointer speed, scroll speed, reverse scrolling, saved on the phone ----
 async function drag(h) {   // one finger, 10 px in 1 ms: gain is SPEED * speed * 3.5
   h.a.run('fingerDown(1, 0, 0, 0); fingerMove(1, 10, 0, 1); fingerUp(1, 400)');
   await h.fire(12);
@@ -311,7 +311,7 @@ test('touchpad defaults keep today\'s feel: 1x speed, normal notch, no reversal'
   assert.deepEqual(await scroll(h, 88), [240]);
 });
 
-test('pointer speed multiplies the gain and is saved; scroll speed changes the notch; natural scrolling reverses', async () => {
+test('pointer speed multiplies the gain and is saved; scroll speed changes the notch; reverse scrolling flips', async () => {
   const h = await online();
   h.a.el('padSpeed').value = '200'; await h.a.el('padSpeed').emit('input');
   assert.deepEqual(JSON.parse(h.a.storage.get('xdeck-pad')), { speed: 200, scroll: 'normal', natural: false });
@@ -329,7 +329,7 @@ test('pointer speed multiplies the gain and is saved; scroll speed changes the n
   await h.a.el('padCfg').emit('click', pick('scroll', 'normal'));
   await h.a.el('padNatural').emit('click');
   assert.equal(h.a.run('padCfg.natural'), true);
-  assert.equal(h.a.el('padNatural').textContent, 'Natural scrolling: On');
+  assert.equal(h.a.el('padNatural').textContent, 'Reverse scrolling: On');
   assert.deepEqual((await scroll(h, 88)).slice(-1), [-240]);
   assert.deepEqual(JSON.parse(h.a.storage.get('xdeck-pad')), { speed: 250, scroll: 'normal', natural: true });
 });

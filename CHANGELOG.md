@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Phone: touchpad settings.** A gear beside the mouse buttons opens pointer speed (0.5x to 2.5x), scroll speed (slow, normal, fast) and natural scrolling (reverses the vertical direction). Saved on the phone; works with any Xdeck version.
+- **Phone: touchpad settings.** A gear beside the mouse buttons opens pointer speed (0.5x to 2.5x), scroll speed (slow, normal, fast) and reverse scrolling (flips the vertical direction). Saved on the phone; works with any Xdeck version.
 - **Phone: landscape.** The remote now turns: the touchpad fills the height with the mouse buttons beside it, and the header and tab bar get compact.
 - **Phone: volume per app.** The Audio tab lists each app playing on the PC with its own slider and mute (the Windows volume mixer). New `mixer` capability; `appvol` / `appmute` messages. Needs Xdeck 0.7.9 on the PC; older PCs say so.
 - **Phone: controller batteries.** The Audio tab shows each connected controller's battery (new `padbattery` capability and `pads` in the state), and a short toast with one vibration when one drops to 15% or below while the app is open.

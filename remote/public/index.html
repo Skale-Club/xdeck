@@ -324,7 +324,7 @@
   <div id="padCfg" hidden>
     <div class="cfgrow"><span class="cfgl">Pointer</span><div class="vol"><input type="range" id="padSpeed" min="50" max="250" step="10" value="100" aria-label="Pointer speed"><span class="pct" id="padSpeedPct">1.0×</span></div></div>
     <div class="cfgrow"><span class="cfgl">Scroll</span><div class="seg"><button class="btn" data-scroll="slow">Slow</button><button class="btn" data-scroll="normal">Normal</button><button class="btn" data-scroll="fast">Fast</button></div></div>
-    <div class="cfgrow"><span class="cfgl">Direction</span><button class="btn small" id="padNatural">Natural scrolling: Off</button></div>
+    <div class="cfgrow"><span class="cfgl">Direction</span><button class="btn small" id="padNatural">Reverse scrolling: Off</button></div>
     <button class="btn small" id="padCfgDone">Done</button>
   </div>
 </main>
@@ -746,7 +746,7 @@ const SPEED = 1.6;
 
 // Touchpad settings (phone only, any PC), kept in localStorage: the pointer speed multiplies SPEED
 // (percent, 50..250), the scroll speed picks how far two fingers travel per wheel notch, and
-// "natural scrolling" reverses the vertical direction.
+// "reverse scrolling" flips the vertical direction (off: the page follows the fingers, as before).
 const NOTCHES = { slow: 32, normal: 22, fast: 14 };
 function cleanPad(o) {
   o = o && typeof o === "object" ? o : {};
@@ -844,7 +844,7 @@ function showPadCfg() {
   $("padSpeed").style.setProperty("--p", (padCfg.speed - 50) / 2 + "%");
   $("padSpeedPct").textContent = (padCfg.speed / 100).toFixed(1) + "×";
   document.querySelectorAll("[data-scroll]").forEach((b) => b.classList.toggle("on", b.dataset.scroll === padCfg.scroll));
-  $("padNatural").textContent = "Natural scrolling: " + (padCfg.natural ? "On" : "Off");
+  $("padNatural").textContent = "Reverse scrolling: " + (padCfg.natural ? "On" : "Off");
   $("padNatural").classList.toggle("on", padCfg.natural);
 }
 $("padCfgBtn").addEventListener("click", () => { showPadCfg(); $("padCfg").hidden = !$("padCfg").hidden; });

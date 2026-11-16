@@ -3731,7 +3731,9 @@ static class Remote
                     {
                         bool ok = t == "appvol" ? Mixer.SetVolume(id, (float)v) : Mixer.ToggleMute(id);
                         if (!ok) Log(t + ": no such app " + id);
-                        Push(true);
+                        // A slider sends a value every 40 ms: like the main volume, no full state for each
+                        // (the 2 s check sends it); a mute toggle answers at once.
+                        if (t == "appmute") Push(true);
                     });
                     break;
                 }
