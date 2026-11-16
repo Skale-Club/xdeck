@@ -3474,6 +3474,11 @@ static class Remote
         return (int)Math.Max(min, Math.Min(max, Math.Round(d)));
     }
 
+    // What this build can do for a phone. The phone shows a feature only when it is listed here (or,
+    // for an older Xdeck that does not answer ping, when its state reply carries the field), so a new
+    // feature appends its name to this one list and never needs a phone-side version check.
+    static readonly string[] Caps = { "input", "audio", "mics", "apps", "obs", "bright", "ping" };
+
     static void Handle(Dictionary<string, object> m, Action<Dictionary<string, object>> reply)
     {
         string t = m.ContainsKey("t") ? m["t"] as string : null;
@@ -3576,6 +3581,18 @@ static class Remote
                 {
                     string a = m["a"] as string;
                     if (Array.IndexOf(ObsActions, a) >= 0) Obs.Run(new ObsBinding { Key = "obs." + a, Action = a, Remote = true });
+                    break;
+                }
+            case "ping":
+                {
+                    // The phone's health check: answered at once and on this thread (not through the audio
+                    // queue), so a slow audio driver cannot make the PC look dead. n is echoed back.
+                    Dictionary<string, object> pong = new Dictionary<string, object>();
+                    pong["t"] = "pong";
+                    pong["n"] = m.ContainsKey("n") ? m["n"] : null;
+                    pong["ver"] = Updater.Current;
+                    pong["caps"] = new List<object>(Caps);
+                    reply(pong);
                     break;
                 }
             case "state":

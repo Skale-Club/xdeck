@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The phone shows "Connected" only when the PC really answers.** The phone pings the PC
+  (encrypted `ping`/`pong`, which also reports the Xdeck version and what it can do) and shows
+  "Connecting to PC…", then "Connected", or "PC not responding" with a hint when Xdeck there goes
+  silent, and recovers by itself. Older PCs keep working: their state replies count as answers, and
+  a feature they lack now says which Xdeck version it needs instead of a blanket "Update Xdeck".
 - **Banners at the right size on scaled screens.** The on-screen banners (audio, volume,
   brightness, devices, low battery) were drawn in plain pixels, so they came out at half size on a
   200% screen such as a Surface. They now follow the Windows display scale, like the panel, with
