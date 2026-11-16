@@ -1,0 +1,60 @@
+name: Deploy phone remote
+
+# Deploys remote/ (phone PWA + relay worker) to Cloudflare when a release reaches main.
+# One-time setup (secrets, environment): docs/RELEASING.md, "Phone remote".
+on:
+  push:
+    branches: [main]
+    paths:
+      - "remote/**"
+      - ".github/workflows/deploy-remote.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-remote
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Phone tests
+        run: node --test tests/remote-pairing.test.cjs
+      - name: sw.js CACHE bumped when remote/public changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: node tools/check-sw-bump.cjs "${BEFORE:-HEAD~1}"
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: remote
+          wranglerVersion: "4.88.0"
+          command: deploy
+      - name: Smoke test (live sw.js carries the new CACHE)
+        run: |
+          want=$(grep -oE 'const CACHE *= *"[^"]+"' remote/public/sw.js | grep -oE '"[^"]+"' | tr -d '"')
+          [ -n "$want" ] || { echo "No CACHE value in remote/public/sw.js"; exit 1; }
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "https://xdeck.skale.club/sw.js?cb=$RANDOM" | grep -qF "\"$want\""; then
+              echo "Live sw.js serves $want"; exit 0
+            fi
+            echo "Attempt $i: not live yet, waiting 10 s"; sleep 10
+          done
+          echo "Live sw.js does not contain $want after ~60 s"; exit 1
