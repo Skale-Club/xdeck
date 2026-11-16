@@ -3876,7 +3876,9 @@ static class Ui
 
     public static void Icon(Graphics g, string kind, RectangleF box, Color c)
     {
-        int px = (int)Math.Ceiling(Math.Max(box.Width, box.Height) * 2);
+        float k;   // the drawing's scale (a banner on a 200% screen draws at 2): sharp at any scale
+        using (Matrix m = g.Transform) k = Math.Max(1f, m.Elements[0]);
+        int px = (int)Math.Ceiling(Math.Max(box.Width, box.Height) * Math.Max(2f, k * 1.5f));
         InterpolationMode oldI = g.InterpolationMode;
         PixelOffsetMode oldP = g.PixelOffsetMode;
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
@@ -4344,6 +4346,20 @@ class Banner : Form
     const int NoBattery = -2, Wired = -3;
     static readonly Color Red = Color.FromArgb(232, 72, 85);
 
+    // Xdeck is DPI aware, so Windows does not enlarge the banner: everything below is laid out in
+    // 96-DPI units, the window is that times the screen's scale, and OnPaint scales the drawing.
+    // (It used to be drawn in plain pixels: half size on a 200% screen such as a Surface.)
+    public static float ScaleOverride;   // --banners: render at a given scale
+    readonly float s = ScaleOverride > 0 ? ScaleOverride : SystemScale();
+    static float SystemScale()
+    {
+        try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) return Math.Max(1f, g.DpiX / 96f); }
+        catch { return 1f; }
+    }
+    Size Px(int w, int h) { return new Size((int)Math.Ceiling(w * s), (int)Math.Ceiling(h * s)); }
+    float W { get { return Width / s; } }    // the size in layout units
+    float H { get { return Height / s; } }
+
     public Banner()
     {
         FormBorderStyle = FormBorderStyle.None;
@@ -4489,8 +4505,8 @@ class Banner : Form
     {
         Layout(caption, name, kind, index, count, brand);
         Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-        baseTop = look == Look.Alert ? wa.Top + 32 : wa.Top + 60;
-        Location = new Point(look == Look.Alert ? wa.Left + (wa.Width - Width) / 2 : wa.Left + 50, baseTop);
+        baseTop = wa.Top + (int)Math.Round((look == Look.Alert ? 32 : 60) * s);
+        Location = new Point(look == Look.Alert ? wa.Left + (wa.Width - Width) / 2 : wa.Left + (int)Math.Round(50 * s), baseTop);
         Invalidate();
         if (!Visible) { Opacity = 0; Show(); }
         shownAt = DateTime.Now;
@@ -4512,7 +4528,7 @@ class Banner : Form
                 {
                     int w = 42 + LogoSpace + Measure(g, title, nf) + 14;
                     if (battery >= 0) w += (int)Math.Ceiling(MiniPillsW) + 6 + Measure(g, BatteryText(), cf);
-                    Size = new Size(w, 40);
+                    Size = Px(w, 40);
                 }
             }
             else if (look == Look.Alert)
@@ -4523,7 +4539,7 @@ class Banner : Form
                 {
                     int textW = Math.Max(LogoSpace + Measure(g, title, tf), 18 + Measure(g, caption.ToUpperInvariant(), bf));
                     textW = Math.Max(textW, Measure(g, battery + "%" + detail, df) + 6);
-                    Size = new Size(Math.Max(380, 112 + textW + 28), 104);
+                    Size = Px(Math.Max(380, 112 + textW + 28), 104);
                 }
             }
             else
@@ -4534,7 +4550,7 @@ class Banner : Form
                     if (battery != NoBattery)
                         textW = Math.Max(textW, (int)Math.Ceiling((battery >= 0 ? BatPillsW + 8 : 0) + g.MeasureString(BatteryText(), cf).Width));
                     if (volume >= 0) textW = Math.Max(textW, (int)Math.Ceiling(VolBarW + 8 + g.MeasureString(VolumeText(), cf).Width));
-                    Size = new Size(Math.Max(240, 88 + textW + 28), 84);
+                    Size = Px(Math.Max(240, 88 + textW + 28), 84);
                 }
             }
         }
@@ -4567,7 +4583,7 @@ class Banner : Form
         {
             double k = t / inMs;
             Opacity = Peak * k;
-            if (look == Look.Alert) Top = baseTop - (int)Math.Round(18 * Math.Pow(1 - k, 3));   // slides down into place
+            if (look == Look.Alert) Top = baseTop - (int)Math.Round(18 * s * Math.Pow(1 - k, 3));   // slides down into place
         }
         else if (t < inMs + holdMs) { Opacity = Peak; Top = baseTop; }
         else if (t < inMs + holdMs + outMs) Opacity = Peak * (1 - (t - inMs - holdMs) / outMs);
@@ -4586,6 +4602,7 @@ class Banner : Form
         Graphics g = e.Graphics;
         Ui.Smooth(g);
         g.Clear(Ui.Back);
+        g.ScaleTransform(s, s);
         if (look == Look.Compact) PaintCompact(g);
         else if (look == Look.Alert) PaintAlert(g);
         else PaintNormal(g);
@@ -4603,7 +4620,7 @@ class Banner : Form
     void PaintCompact(Graphics g)
     {
         Color accent = Ui.Accent;
-        using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 3, Height);
+        using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 3, H);
         Ui.Icon(g, glyph, new RectangleF(14, 10, 20, 20), Ui.Text);
         float x = 42;
         float lw = Ui.Logo(g, brand, x, 20, LogoH, Ui.Text);
@@ -4628,9 +4645,9 @@ class Banner : Form
         float pulse = (float)(0.5 + 0.5 * Math.Sin(t * Math.PI * 2 * 0.9));   // 0..1, a bit under once a second
 
         // a soft red glow from the left, and the red strip
-        using (LinearGradientBrush glow = new LinearGradientBrush(new Rectangle(0, 0, Width, Height), Color.FromArgb(64, Red), Color.FromArgb(0, Red), 0f))
-            g.FillRectangle(glow, 0, 0, Width, Height);
-        using (Brush r = new SolidBrush(Red)) g.FillRectangle(r, 0, 0, 4, Height);
+        using (LinearGradientBrush glow = new LinearGradientBrush(new RectangleF(0, 0, W, H), Color.FromArgb(64, Red), Color.FromArgb(0, Red), 0f))
+            g.FillRectangle(glow, 0, 0, W, H);
+        using (Brush r = new SolidBrush(Red)) g.FillRectangle(r, 0, 0, 4, H);
 
         // the battery: a halo that breathes, the outline, and its charge in red
         RectangleF body = new RectangleF(24, 38, 54, 28);
@@ -4683,7 +4700,7 @@ class Banner : Form
         Color accent = glyph == "rec" || glyph == "live" ? Red : Ui.Accent;
 
         // accent strip + icon disc
-        using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 4, Height);
+        using (Brush a = new SolidBrush(accent)) g.FillRectangle(a, 0, 0, 4, H);
         RectangleF disc = new RectangleF(20, 18, 48, 48);
         using (Brush a = new SolidBrush(Color.FromArgb(48, accent))) g.FillEllipse(a, disc);
         Ui.Icon(g, glyph, new RectangleF(disc.X + 12, disc.Y + 12, disc.Width - 24, disc.Height - 24), Ui.Text);
@@ -5919,7 +5936,14 @@ static class Program
     static void Main(string[] args)
     {
         if (args.Length >= 2 && args[0] == "--icons") { SetProcessDPIAware(); IconSheet(args[1]); return; }
-        if (args.Length >= 2 && args[0] == "--banners") { SetProcessDPIAware(); BannerSheet(args[1]); return; }
+        if (args.Length >= 2 && args[0] == "--banners")   // --banners <file.png> [scale, e.g. 2 for a 200% screen]
+        {
+            SetProcessDPIAware();
+            float sc;
+            if (args.Length >= 3 && float.TryParse(args[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sc)) Banner.ScaleOverride = sc;
+            BannerSheet(args[1]);
+            return;
+        }
         // the unpacked update copying itself over the installed copy (Updater.Install)
         int oldPid;
         if (args.Length >= 3 && args[0] == "--apply-update" && int.TryParse(args[2], out oldPid))
