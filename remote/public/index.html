@@ -907,7 +907,25 @@ $("tab-apps").addEventListener("click", (e) => {
   vibrate(12);
 });
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+// New versions: an installed app on Android stays open in the background for days, so it never
+// loaded a new version by itself (the phone kept an old tab bar). Each time it comes back to the
+// screen it asks for a new sw.js (deploys change it); the new worker takes over at once
+// (skipWaiting + claim) and the page reloads, unless a finger is on the touchpad or a pairing is
+// running, then at the next return.
+let reloadPending = false;
+function reloadIfNew() {
+  if (!reloadPending || document.hidden || touches.size || dragging || pairing) return;
+  reloadPending = false;
+  location.reload();
+}
+if ("serviceWorker" in navigator) {
+  const hadWorker = !!navigator.serviceWorker.controller;   // the first install takes control too: no reload then
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadWorker) { reloadPending = true; reloadIfNew(); } });
+  const checkUpdate = () => navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkUpdate(); reloadIfNew(); } });
+  setInterval(() => { if (!document.hidden) checkUpdate(); }, 30 * 60 * 1000);
+}
 connect();
 </script>
 </body>
