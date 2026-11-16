@@ -47,11 +47,12 @@ static class AppPaths
 {
     public static string Exe { get { return Path.GetDirectoryName(Application.ExecutablePath); } }
     public static bool Portable { get { return Directory.Exists(Path.Combine(Exe, "Data")); } }
+    public static string DataOverride;   // set only by SelfTest: a temporary folder instead of the real one
     public static string Data
     {
         get
         {
-            string d = Portable ? Path.Combine(Exe, "Data")
+            string d = DataOverride != null ? DataOverride : Portable ? Path.Combine(Exe, "Data")
                                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Xdeck");
             Directory.CreateDirectory(d);
             return d;
@@ -3135,11 +3136,20 @@ static class Remote
         get { string r = Environment.GetEnvironmentVariable("XDECK_RELAY"); return string.IsNullOrEmpty(r) ? DefaultRelay : r.TrimEnd('/'); }
     }
 
-    static string ConfigFile { get { return Path.Combine(AppPaths.Data, "remote.json"); } }
+    internal static string ConfigFile { get { return Path.Combine(AppPaths.Data, "remote.json"); } }
     static void Notify() { Action c = Changed; if (c != null) c(); }
 
     // ------------------------------------------------ settings: remote.json, secrets protected for this Windows user
     public static void Load()
+    {
+        LoadConfig();
+        // always connected: the phone app is the remote, there is nothing to turn on
+        On = true;
+        Start();
+    }
+
+    // Everything Load does except connecting to the relay, so SelfTest can load and save with no network.
+    internal static void LoadConfig()
     {
         try
         {
@@ -3170,12 +3180,15 @@ static class Remote
             Save();
         }
         else Save();   // rewrites a remote.json an older Xdeck could not update
-        // always connected: the phone app is the remote, there is nothing to turn on
-        On = true;
-        Start();
     }
 
-    static void Save()
+    // SelfTest hooks: forget the loaded state (as a fresh start would have it) and look at the key / PC id.
+    internal static void TestReset() { lock (phones) phones.Clear(); pcId = null; secret = null; key = null; keyStored = null; }
+    internal static CngKey TestKey { get { return key; } }
+    internal static string TestPcId { get { return pcId; } }
+    internal static void TestAddPhone(Phone p) { lock (phones) phones.Add(p); }
+
+    internal static void Save()
     {
         try
         {
@@ -3479,7 +3492,7 @@ static class Remote
     // feature appends its name to this one list and never needs a phone-side version check.
     static readonly string[] Caps = { "input", "audio", "mics", "apps", "obs", "bright", "ping" };
 
-    static void Handle(Dictionary<string, object> m, Action<Dictionary<string, object>> reply)
+    internal static void Handle(Dictionary<string, object> m, Action<Dictionary<string, object>> reply)
     {
         string t = m.ContainsKey("t") ? m["t"] as string : null;
         switch (t)
@@ -5952,6 +5965,12 @@ static class Program
     [STAThread]   // must sit directly on Main: WebView2 and the audio COM objects need an STA thread
     static void Main(string[] args)
     {
+        if (args.Length >= 1 && args[0] == "--selftest")   // --selftest [report.txt]: checks with no UI and no network (build.ps1 runs it)
+        {
+            SetProcessDPIAware();
+            Environment.Exit(SelfTest.Run(args.Length >= 2 ? args[1] : Path.Combine(AppPaths.Exe, "selftest.txt")));
+            return;
+        }
         if (args.Length >= 2 && args[0] == "--icons") { SetProcessDPIAware(); IconSheet(args[1]); return; }
         if (args.Length >= 2 && args[0] == "--banners")   // --banners <file.png> [scale, e.g. 2 for a 200% screen]
         {
@@ -5984,5 +6003,170 @@ static class Program
             Application.EnableVisualStyles();
             Application.Run(new XdeckApp());
         }
+    }
+}
+
+// ---------------------------------------------------------------- self-test
+// "Xdeck.exe --selftest [report.txt]": checks the parts that broke in the field without a window and
+// without the network, in a temporary data folder. build.ps1 runs it after every build and fails on
+// a FAIL, and CI runs build.ps1. (It exists because Remote.Save() once failed silently after the
+// first start, so paired phones were forgotten on restart; no unit test would have caught that.)
+static class SelfTest
+{
+    [DllImport("kernel32.dll")] static extern bool AttachConsole(int pid);
+
+    static readonly List<string> lines = new List<string>();
+    static int failed;
+
+    static void Check(string name, Action test)
+    {
+        try { test(); lines.Add("PASS " + name); }
+        catch (Exception e) { failed++; lines.Add("FAIL " + name + ": " + e.Message); }
+    }
+    static void Need(bool ok, string detail) { if (!ok) throw new Exception(detail); }
+
+    public static int Run(string report)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "xdeck-selftest-" + Process.GetCurrentProcess().Id);
+        Directory.CreateDirectory(dir);
+        AppPaths.DataOverride = dir;
+        try
+        {
+            Check("remote.json survives restarts", RemoteRoundTrip);
+            Check("crypto seal/open round trip", SealOpen);
+            Check("crypto tamper and wrong key rejected", Tamper);
+            Check("crypto ECDH both sides agree", Ecdh);
+            Check("remote ping answers pong", Ping);
+            Check("remote ignores unknown type", Unknown);
+            Check("banner follows scale", BannerScale);
+        }
+        catch (Exception e) { failed++; lines.Add("FAIL selftest: " + e.Message); }
+        finally
+        {
+            AppPaths.DataOverride = null;
+            try { Directory.Delete(dir, true); } catch { }
+        }
+        string text = string.Join(Environment.NewLine, lines.ToArray()) + Environment.NewLine
+                    + (failed == 0 ? "ALL PASS" : failed + " FAILED") + Environment.NewLine;
+        try { File.WriteAllText(report, text); } catch { }
+        try { if (AttachConsole(-1)) Console.Write(text); } catch { }
+        return failed == 0 ? 0 : 1;
+    }
+
+    static string B64(byte[] b) { return Convert.ToBase64String(b); }
+
+    static void RemoteRoundTrip()
+    {
+        Remote.TestReset();
+        Remote.LoadConfig();   // first start: makes pc / secret / key
+        Need(File.Exists(Remote.ConfigFile), "first start wrote no remote.json");
+        string pc = Remote.TestPcId;
+        string phonePub;
+        using (CngKey phoneKey = RemoteCrypto.NewKey()) phonePub = RemoteCrypto.PublicRaw(phoneKey);
+        Remote.Phone ph = new Remote.Phone { Id = "phone1", Name = "Test phone", Pub = phonePub };
+        RemoteCrypto.Derive(Remote.TestKey, phonePub, out ph.Enc, out ph.Mac);
+        byte[] enc0 = ph.Enc, mac0 = ph.Mac;
+        Remote.TestAddPhone(ph);
+        Remote.Save();
+
+        Remote.TestReset();
+        Remote.LoadConfig();   // second start: the key is imported now (export policy None)
+        Need(Remote.TestPcId == pc, "pc id changed on restart");
+        string before = File.ReadAllText(Remote.ConfigFile);
+        System.Threading.Thread.Sleep(50);
+        Remote.Save();         // this is what failed: exporting an imported key
+        string after = File.ReadAllText(Remote.ConfigFile);
+        string log = Path.Combine(AppPaths.Data, "remote.log");
+        Need(!File.Exists(log) || !File.ReadAllText(log).Contains("save remote.json"), "Save logged an error: " + (File.Exists(log) ? File.ReadAllText(log).Trim() : ""));
+        Need(before != after, "Save did not rewrite remote.json after a restart");
+
+        Remote.TestReset();
+        Remote.LoadConfig();   // third start
+        List<Remote.Phone> phones = Remote.Phones;
+        Need(phones.Count == 1 && phones[0].Id == "phone1" && phones[0].Name == "Test phone", "paired phone forgotten (" + phones.Count + " phones)");
+        Need(B64(phones[0].Enc) == B64(enc0) && B64(phones[0].Mac) == B64(mac0), "derived keys differ after restart");
+        Remote.TestReset();
+    }
+
+    static void Keys(out byte[] enc, out byte[] mac)
+    {
+        enc = new byte[32]; mac = new byte[32];
+        for (int i = 0; i < 32; i++) { enc[i] = (byte)i; mac[i] = (byte)(100 + i); }
+    }
+
+    static void SealOpen()
+    {
+        byte[] enc, mac;
+        Keys(out enc, out mac);
+        string msg = "{\"t\":\"text\",\"text\":\"ação, coração, não ü €\"}";
+        Need(RemoteCrypto.Open(enc, mac, RemoteCrypto.Seal(enc, mac, msg)) == msg, "Open did not return the sealed text");
+    }
+
+    static void Tamper()
+    {
+        byte[] enc, mac;
+        Keys(out enc, out mac);
+        string sealedText = RemoteCrypto.Seal(enc, mac, "hello");
+        byte[] all = Convert.FromBase64String(sealedText);
+        all[20] ^= 1;
+        Need(RemoteCrypto.Open(enc, mac, B64(all)) == null, "tampered ciphertext was accepted");
+        byte[] otherMac = (byte[])mac.Clone(); otherMac[0] ^= 1;
+        Need(RemoteCrypto.Open(enc, otherMac, sealedText) == null, "wrong mac key was accepted");
+        byte[] otherEnc = (byte[])enc.Clone(); otherEnc[0] ^= 1;
+        Need(RemoteCrypto.Open(otherEnc, mac, sealedText) != "hello", "wrong enc key decrypted the text");
+        Need(RemoteCrypto.Open(enc, mac, "not base64 !!") == null, "garbage was accepted");
+    }
+
+    static void Ecdh()
+    {
+        using (CngKey a = RemoteCrypto.NewKey())
+        using (CngKey b = RemoteCrypto.NewKey())
+        {
+            byte[] e1, m1, e2, m2;
+            RemoteCrypto.Derive(a, RemoteCrypto.PublicRaw(b), out e1, out m1);
+            RemoteCrypto.Derive(b, RemoteCrypto.PublicRaw(a), out e2, out m2);
+            Need(B64(e1) == B64(e2), "enc keys differ");
+            Need(B64(m1) == B64(m2), "mac keys differ");
+            Need(B64(e1) != B64(m1), "enc and mac keys are equal");
+        }
+    }
+
+    static void Ping()
+    {
+        Dictionary<string, object> got = null;
+        Dictionary<string, object> m = new Dictionary<string, object>();
+        m["t"] = "ping"; m["n"] = 7;
+        Remote.Handle(m, delegate(Dictionary<string, object> r) { got = r; });
+        Need(got != null, "no reply");
+        Need(got["t"] as string == "pong", "reply is not pong");
+        Need(Convert.ToInt32(got["n"]) == 7, "n not echoed");
+        Need(got["ver"] as string == Updater.Current, "wrong ver");
+        List<object> caps = got["caps"] as List<object>;
+        Need(caps != null && caps.Contains("ping") && caps.Contains("input"), "caps lack ping/input");
+    }
+
+    static void Unknown()
+    {
+        bool replied = false;
+        Dictionary<string, object> m = new Dictionary<string, object>();
+        m["t"] = "no-such-type";
+        Remote.Handle(m, delegate(Dictionary<string, object> r) { replied = true; });
+        Remote.Handle(new Dictionary<string, object>(), delegate(Dictionary<string, object> r) { replied = true; });
+        Need(!replied, "unknown type got a reply");
+    }
+
+    static void BannerScale()
+    {
+        Device d = new Device { Name = "Xbox", Glyph = "pad:xbox", Brand = "xbox", Pad = true, Conn = "Bluetooth", Battery = 80 };
+        try
+        {
+            int w1, h1, w2, h2;
+            Banner.ScaleOverride = 1;
+            using (Bitmap b = Banner.Preview("normal", "Controller connected", d)) { w1 = b.Width; h1 = b.Height; }
+            Banner.ScaleOverride = 2;
+            using (Bitmap b = Banner.Preview("normal", "Controller connected", d)) { w2 = b.Width; h2 = b.Height; }
+            Need(Math.Abs(w2 - 2.0 * w1) <= 4 && Math.Abs(h2 - 2.0 * h1) <= 4, "scale 2 gave " + w2 + "x" + h2 + " for " + w1 + "x" + h1 + " at scale 1");
+        }
+        finally { Banner.ScaleOverride = 0; }
     }
 }

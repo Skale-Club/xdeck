@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Compiles Xdeck with the .NET Framework csc of the runner, then runs `Xdeck.exe --selftest`
+      # (build.ps1 fails on a FAIL). No secrets, no publishing: releases are built by hand.
+      - name: Build and self-test
+        shell: powershell
+        run: .\build.ps1
+
+      - name: Node tests
+        run: node --test tests/remote-pairing.test.cjs tests/panel.test.cjs
+
+      - name: Upload self-test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-report
+          path: build/selftest.txt
+          if-no-files-found: ignore
