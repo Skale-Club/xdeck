@@ -466,3 +466,25 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
   in-app browser (20%, 85%, muted; phone --p follows input). Release assets present and the ZIP
   passed Updater.Verify. Production serves sw.js with xdeck-remote-v6 and the new slider CSS.
   Not dragged with a real mouse or tried on a real phone.
+
+## 2026-11-15 — Screen brightness in the panel and the phone remote
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-15
+- Type: Feature
+- Area: Panel, phone remote, PC host
+- Status: Merged into dev locally and installed on the Surface; push, relay deploy and release pending the owner's OK
+- Summary: New Brightness class (WMI WmiMonitorBrightness / WmiSetBrightness) for the built-in
+  display. It reads at most once a second, sets values on a worker thread (latest value wins), and
+  returns -1 when the PC has no brightness control (a desktop with external monitors), checking
+  again every 60 s. The panel adds a Brightness section and the phone's Audio tab adds a slider,
+  both only when bright >= 0. The phone message is {t:"bright", v}, and it shows a Brightness
+  banner on the PC. The phone app cache is now xdeck-remote-v7.
+- Agent: Claude Code (Opus 5.5, no subagents; machine in critical memory mode)
+- Repo / Branch: Skale-Club/xdeck / feat/brightness-control -> dev
+- Tests: Built and installed (csc, 7 s). The app's Brightness class, called by reflection on the
+  Surface, read 49, set 70, took the last of a 4-value burst (55) and restored 49. Panel and phone
+  UI checked in the browser pane with bright 49, 0, 100, -1 and missing; the phone sent
+  {t:"bright", v:0.63}. Not tested on a desktop without a built-in display (WMI throws "Not
+  supported" there, which maps to -1).
