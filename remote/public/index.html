@@ -35,6 +35,8 @@
   .pcbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pcbtn svg { width: 14px; height: 14px; color: var(--dim); flex: none; }
   .status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); flex: none; }
+  .health { margin: 0 16px 4px; font-size: 12px; color: var(--dim); }
+  .health[hidden] { display: none; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
   .status.on .dot { background: var(--green); }
   .status.bad .dot { background: var(--red); }
@@ -170,6 +172,7 @@
   <button class="pcbtn" id="pcBtn"><span id="pcName">Xdeck</span><svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <span class="status" id="status"><span class="dot"></span><span id="statusText">Connecting…</span></span>
 </header>
+<div class="health" id="healthHint" hidden></div>
 
 <main>
   <section id="tab-mouse" class="on">
@@ -367,7 +370,7 @@ async function connect() {
   $("pcName").textContent = current.pcName || "PC";
   try { keys = await deriveKeys(current); } catch (e) { setStatus("bad", "Pair again"); showPair(true); return; }
   setStatus("", "Connecting…");
-  gotState = false;
+  gotState = false; stopHealth(); pcCaps = new Set(); pcVer = "";
   const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/phone?pc=${encodeURIComponent(current.pc)}&phone=${encodeURIComponent(current.phone)}&token=${encodeURIComponent(current.token)}`;
   const s = new WebSocket(url);
   ws = s;
@@ -379,16 +382,19 @@ async function connect() {
       const m = JSON.parse(e.data);
       if (m.t === "pc") {
         if (m.name) { current.pcName = m.name; $("pcName").textContent = m.name; save(pcs); }
-        setStatus(m.online ? "on" : "bad", m.online ? "Connected" : "PC offline");
-        if (m.online) askState();
+        // The relay only knows its socket to the PC is open; the PC may still be deaf (Xdeck hung,
+        // old build, dropped our key). "Connected" is shown only when the PC itself answers.
+        if (m.online) startHealth(); else { stopHealth(); setStatus("bad", "PC offline"); }
       }
       return;
     }
-    try { onState(await open(e.data)); } catch (_) {}
+    let msg;
+    try { msg = await open(e.data); } catch (_) { return; }
+    if (msg.t === "pong") onPong(msg); else onState(msg);
   };
   s.onclose = (e) => {
     if (my !== gen) return;
-    ws = null;
+    ws = null; stopHealth();
     if (e.code === 4003 || (!opened && e.code === 1006 && retry >= 5600)) {
       // unpaired on the PC (or refused again and again): this phone has to pair again
       setStatus("bad", "Not paired");
@@ -405,7 +411,69 @@ function send(m) {
   chain = chain.then(async () => { const d = await seal(m); if (s.readyState === 1) s.send(d); }).catch(() => {});
 }
 
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (!ws) connect(); else askState(); } });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  if (!ws) connect();
+  else { askState(); if (pcOnline) { sendPing(); armDeadline(8000); } }   // no answers could arrive while hidden: judge afresh
+});
+
+// ------------------------------------------------------------ PC health
+// The relay says the PC socket is open, not that Xdeck there is listening. So after the relay says
+// "online" the phone checks the PC itself: ping/pong every 5 s on a PC that has it, and on an older
+// Xdeck (answers state, not ping) a state request every 10 s. Silence for 15 s (8 s at first) shows
+// "PC not responding"; the next answer brings "Connected" back. Input is never blocked by any of this.
+const HINT = "Xdeck on the PC is not answering. Restart Xdeck there; if it keeps happening, pair again.";
+let pcOnline = false, pcAlive = false, pcLegacy = false, pcCaps = new Set(), pcVer = "";
+let pingN = 0, healthTimer = 0, deadTimer = 0, healthTick = 0;
+function sendPing() { send({ t: "ping", n: ++pingN }); }
+function armDeadline(ms) {
+  clearTimeout(deadTimer);
+  deadTimer = setTimeout(() => {
+    if (!pcOnline) return;
+    pcAlive = false;
+    setStatus("bad", "PC not responding");
+    $status.title = HINT; $("healthHint").textContent = HINT; $("healthHint").hidden = false;
+  }, ms);
+}
+function healthLoop() {
+  clearTimeout(healthTimer);
+  healthTimer = setTimeout(() => {
+    healthTick++;
+    if (pcOnline && ws && ws.readyState === 1 && !document.hidden) {
+      if (!pcLegacy) sendPing();
+      else if (healthTick % 2 === 0) send({ t: "state" });
+    }
+    healthLoop();
+  }, 5000);
+}
+function startHealth() {
+  pcOnline = true; pcAlive = false; pcLegacy = false; healthTick = 0;
+  setStatus("", "Connecting to PC…");
+  sendPing(); askState(); armDeadline(8000); healthLoop();
+}
+function stopHealth() {
+  pcOnline = false; pcAlive = false;
+  clearTimeout(healthTimer); clearTimeout(deadTimer);
+  $status.title = ""; $("healthHint").hidden = true;
+}
+// Any answer from the PC proves it is alive; this is the one place that shows "Connected".
+function answered() {
+  if (!pcOnline) return;
+  clearTimeout(deadTimer);
+  armDeadline(15000);
+  if (!pcAlive) { pcAlive = true; setStatus("on", "Connected"); $status.title = ""; $("healthHint").hidden = true; }
+}
+function onPong(m) {
+  pcLegacy = false;
+  pcVer = typeof m.ver === "string" ? m.ver : "";
+  pcCaps = new Set(Array.isArray(m.caps) ? m.caps : []);
+  answered(); renderApps();
+}
+// What a feature needs on the PC, for the notes that replace the old blanket "Update Xdeck".
+const FEATURE_MIN = { mics: "0.7.7", apps: "0.7.7", bright: "0.7.9", ping: "0.7.9" };
+function needs(feature) {
+  return "Needs Xdeck " + FEATURE_MIN[feature] + " or newer on the PC" + (pcVer ? " (this PC has " + pcVer + ")" : "") + ".";
+}
 window.addEventListener("online", () => { if (!ws) connect(); });
 
 // ------------------------------------------------------------ pairing
@@ -756,9 +824,9 @@ function askState() {
   if (gotState) return;
   waitTimer = setTimeout(() => {
     if (gotState || !ws || ws.readyState !== 1) return;
-    $("audioWaitText").textContent = "The PC is not answering. Update Xdeck on the PC (tray menu › Check for updates), then try again.";
+    // Neutral on purpose: whether the PC is dead or just slow shows in the header status.
+    $("audioWaitText").textContent = "Waiting for the PC…";
     $("audioWait").hidden = false;
-    if (!appsKnown) $("appBody").innerHTML = `<p class="note">The PC is not answering. Update Xdeck on the PC, then try again.</p>`;
   }, 6000);
 }
 $("audioRetry").addEventListener("click", () => { $("audioWait").hidden = true; askState(); });
@@ -770,7 +838,7 @@ function device(kind) {
     sliding: false, timer: 0, msg: kind === "mic" ? "micvol" : "vol",
     fill() { ctl.range.style.setProperty("--p", ctl.range.value + "%"); },   // the slider's filled part
     show(list, def, vol, mute, known) {
-      if (!known) { box.innerHTML = `<p class="note">Update Xdeck on the PC to see the microphones here.</p>`; return; }
+      if (!known) { box.innerHTML = `<p class="note">${needs("mics")}</p>`; return; }
       box.innerHTML = list.map((o) =>
         `<div class="out${o.id === def ? " on" : ""}" data-id="${esc(o.id)}">${kind === "mic" ? GLYPH.mic : glyph(o.name)}<span class="nm">${esc(o.name)}</span><span class="ck">✓</span></div>`).join("") ||
         `<p class="note">${kind === "mic" ? "No microphone connected" : "No audio output connected"}</p>`;
@@ -824,6 +892,16 @@ function showBright(v) {
 function onState(m) {
   if (m.t !== "state") return;
   gotState = true;
+  if (!pcCaps.size || pcLegacy) {
+    // No pong: an old Xdeck (it has no ping). Its state reply proves it is alive, and the fields it
+    // carries say what it can do. (A pong sets the caps itself and wins.)
+    pcLegacy = true;
+    pcCaps = new Set(["input", "audio", "obs"]);
+    if (Array.isArray(m.mics)) pcCaps.add("mics");
+    if (Array.isArray(m.apps)) pcCaps.add("apps");
+    if (typeof m.bright === "number") pcCaps.add("bright");
+  }
+  answered();
   clearTimeout(waitTimer);
   $("audioWait").hidden = true;
   apps = Array.isArray(m.apps) ? m.apps : [];
@@ -866,7 +944,7 @@ function renderApps() {
   const list = apps.filter((a) => APPS[a.id]);
   if (!list.length) {
     $("appChips").innerHTML = "";
-    $("appBody").innerHTML = `<p class="note">${appsKnown || !current ? "No apps found on this PC." : "Update Xdeck on the PC to see its apps here."}</p>`;
+    $("appBody").innerHTML = `<p class="note">${appsKnown || !current ? "No apps found on this PC." : gotState ? needs("apps") : "Waiting for the PC…"}</p>`;
     return;
   }
   if (!list.some((a) => a.id === appSel)) appSel = list[0].id;

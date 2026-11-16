@@ -16,6 +16,7 @@ function app(initialPcs = [], extra = {}) {
   class Element {
     constructor(id) {
       this.id = id; this.handlers = {}; this.hidden = false; this.disabled = false;
+      this.parentElement = { classList: { toggle() {} } };
       this.value = ''; this.textContent = ''; this.dataset = {}; this.style = { setProperty() {} };
       const classes = new Set();
       this.classList = { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x), toggle: (x, on) => on ? classes.add(x) : classes.delete(x) };
@@ -42,16 +43,26 @@ function app(initialPcs = [], extra = {}) {
     exportKey: async type => type === 'raw' ? new Uint8Array([1, 2]).buffer : { kty: 'EC' },
     importKey: async () => ({}), deriveBits: async () => new Uint8Array(32).buffer,
     digest: async () => new Uint8Array(32).buffer,
+    // "Encryption" that keeps the text readable: seal() output decodes with unseal(), and the tests
+    // build PC messages with pcSays(). The real crypto is covered by the PC side.
+    encrypt: async (_alg, _key, data) => data, decrypt: async (_alg, _key, data) => data,
+    sign: async () => new Uint8Array(32).buffer, verify: async () => true,
   };
+  const sockets = [];
+  class FakeSocket {
+    constructor(url) { this.url = url; this.readyState = 1; this.sent = []; sockets.push(this); }
+    send(d) { this.sent.push(d); }
+    close() { this.readyState = 3; }
+  }
   const context = vm.createContext({
     document, window, navigator: { userAgent: 'iPhone', onLine: true, ...extra.navigator },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
     location: { protocol: 'https:', host: 'test.local', ...extra.location }, matchMedia: () => ({ matches: false }),
     setInterval: () => 0,
-    crypto: { subtle }, AbortController, TextEncoder, TextDecoder, Uint8Array,
+    crypto: { subtle, getRandomValues: a => a }, AbortController, TextEncoder, TextDecoder, Uint8Array,
     btoa: s => Buffer.from(s, 'binary').toString('base64'), atob: s => Buffer.from(s, 'base64').toString('binary'),
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), performance: { now: () => 0 },
-    WebSocket: class { close() {} }, confirm: () => true,
+    WebSocket: FakeSocket, confirm: () => true,
     fetch: (url, options) => {
       const pending = deferred(); requests.push({ url, options, ...pending });
       options.signal?.addEventListener('abort', () => pending.reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true });
@@ -59,7 +70,7 @@ function app(initialPcs = [], extra = {}) {
     },
   });
   vm.runInContext(script, context);
-  return { el: id => elements.get(id), context, requests, timers, storage, window, document, run: code => vm.runInContext(code, context) };
+  return { el: id => elements.get(id), context, requests, timers, sockets, storage, window, document, run: code => vm.runInContext(code, context) };
 }
 async function enterCode(a, value = '123456') { a.el('code').value = value; await a.el('code').emit('input'); }
 
@@ -193,4 +204,88 @@ test('the first install of the service worker does not reload the page', () => {
   const { reloads, takeOver } = swApp(false);
   takeOver();
   assert.equal(reloads.length, 0);
+});
+
+// ---- PC health: the phone shows "Connected" only when the PC itself answers ----
+const unseal = d => JSON.parse(Buffer.from(d, 'base64').subarray(16, -32).toString());
+const pcSays = msg => Buffer.concat([Buffer.alloc(16), Buffer.from(JSON.stringify(msg)), Buffer.alloc(32)]).toString('base64');
+const PC = { pc: 'pc1', pcName: 'Office PC', phone: 'ph', token: 'tk', pcPub: '', priv: {} };
+async function online(extra) {
+  const a = app([PC], extra); await tick(); await tick();
+  const ws = a.sockets[a.sockets.length - 1];
+  await ws.onmessage({ data: JSON.stringify({ t: 'pc', online: true, name: 'Office PC' }) });
+  await tick(); await tick();
+  const hear = async msg => { await ws.onmessage({ data: pcSays(msg) }); await tick(); await tick(); };
+  const sent = () => ws.sent.map(unseal);
+  const status = () => [a.el('status').className, a.el('statusText').textContent];
+  const fire = async ms => { for (const [id, t] of [...a.timers]) if (t.ms === ms) { a.timers.delete(id); t.fn(); } await tick(); await tick(); };
+  return { a, ws, hear, sent, status, fire };
+}
+
+test('relay online alone is only "Connecting to PC", and the phone pings and asks state', async () => {
+  const h = await online();
+  assert.deepEqual(h.status(), ['status ', 'Connecting to PC…']);
+  assert.deepEqual(h.sent().filter(m => m.t === 'ping'), [{ t: 'ping', n: 1 }]);
+  assert.ok(h.sent().some(m => m.t === 'state'));
+});
+
+test('a pong shows Connected and records the PC version and capabilities', async () => {
+  const h = await online();
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.9', caps: ['input', 'audio', 'ping'] });
+  assert.deepEqual(h.status(), ['status on', 'Connected']);
+  assert.equal(h.a.run('pcVer'), '0.7.9');
+  assert.deepEqual([...h.a.run('pcCaps')], ['input', 'audio', 'ping']);
+  await h.fire(5000);   // the 5 s tick pings again with the next number
+  assert.deepEqual(h.sent().filter(m => m.t === 'ping').map(m => m.n), [1, 2]);
+});
+
+test('an old PC that only answers state is Connected, legacy, with inferred capabilities', async () => {
+  const h = await online();
+  await h.hear({ t: 'state', outs: [], def: '', vol: 0.5, mute: false, mics: [], apps: [{ id: 'obs', running: false }] });
+  assert.deepEqual(h.status(), ['status on', 'Connected']);
+  assert.equal(h.a.run('pcLegacy'), true);
+  assert.deepEqual([...h.a.run('pcCaps')].sort(), ['apps', 'audio', 'input', 'mics', 'obs']);
+  assert.doesNotMatch(h.a.el('mics').innerHTML, /Needs Xdeck/);
+  assert.doesNotMatch(h.a.el('appBody').innerHTML, /Needs Xdeck/);
+  // a legacy PC is not pinged again: its liveness check is a state request every 10 s
+  const before = h.sent().filter(m => m.t === 'ping').length;
+  await h.fire(5000); await h.fire(5000);
+  assert.equal(h.sent().filter(m => m.t === 'ping').length, before);
+  assert.equal(h.sent().filter(m => m.t === 'state').length, 2);
+});
+
+test('silence shows PC not responding with a hint, and the next answer recovers it; input stays usable', async () => {
+  const h = await online();
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.9', caps: ['input', 'ping'] });
+  await h.fire(15000);
+  assert.deepEqual(h.status(), ['status bad', 'PC not responding']);
+  assert.equal(h.a.el('healthHint').hidden, false);
+  assert.match(h.a.el('healthHint').textContent, /Restart Xdeck/);
+  h.a.run('send({ t: "move", dx: 1, dy: 1 })'); await tick(); await tick();
+  assert.ok(h.sent().some(m => m.t === 'move'));
+  await h.hear({ t: 'pong', n: 2, ver: '0.7.9', caps: ['input', 'ping'] });
+  assert.deepEqual(h.status(), ['status on', 'Connected']);
+  assert.equal(h.a.el('healthHint').hidden, true);
+});
+
+test('a PC that never answers turns bad after 8 s, and the relay saying offline shows PC offline', async () => {
+  const h = await online();
+  await h.fire(8000);
+  assert.deepEqual(h.status(), ['status bad', 'PC not responding']);
+  await h.ws.onmessage({ data: JSON.stringify({ t: 'pc', online: false }) });
+  assert.deepEqual(h.status(), ['status bad', 'PC offline']);
+  assert.equal(h.a.el('healthHint').hidden, true);
+});
+
+test('a legacy PC without apps gets a note naming the needed version, never "Update Xdeck"', async () => {
+  const h = await online();
+  await h.hear({ t: 'state', outs: [], def: '', vol: 0.5, mute: false });
+  assert.match(h.a.el('appBody').innerHTML, /Needs Xdeck 0.7.7 or newer on the PC.</);
+  assert.match(h.a.el('mics').innerHTML, /Needs Xdeck 0.7.7 or newer on the PC.</);
+  assert.doesNotMatch(h.a.el('appBody').innerHTML + h.a.el('mics').innerHTML, /this PC has|Update Xdeck/);
+  assert.equal(h.a.el('brightBox').hidden, true);
+  // with a known version the note says what the PC has
+  await h.hear({ t: 'pong', n: 1, ver: '0.7.6', caps: ['input', 'audio'] });
+  await h.hear({ t: 'state', outs: [], def: '', vol: 0.5, mute: false });
+  assert.match(h.a.el('mics').innerHTML, /(this PC has 0.7.6)/);
 });
