@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Banners at the right size on scaled screens.** The on-screen banners (audio, volume,
+  brightness, devices, low battery) were drawn in plain pixels, so they came out at half size on a
+  200% screen such as a Surface. They now follow the Windows display scale, like the panel, with
+  their icons rendered sharp at that scale. `Xdeck.exe --banners <file.png> [scale]` renders the
+  samples at a given scale.
 - **Paired phones are no longer forgotten when Xdeck restarts.** Since 0.6, `remote.json` could
   only be written on the very first start: later starts load the PC's key from the file, and a key
   loaded that way cannot be exported again, so every save failed silently. A phone paired after
