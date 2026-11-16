@@ -157,6 +157,14 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .remote-txt { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--dim); }
 .remote-txt b { color: var(--text); }
 .remote-left { font: 600 12px "Segoe UI", sans-serif; color: var(--accent); }
+.banner-settings h3:not(:first-child) { margin-top: 16px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg-btn { font: 600 12px "Segoe UI", sans-serif; color: var(--text); background: var(--off); border: 0; border-radius: 14px; padding: 6px 12px; cursor: pointer; }
+.seg-btn:hover { background: var(--card-hot); }
+.seg-btn.on { background: var(--accent); color: #fff; }
+.pad-mode .seg-btn.nav-focus { outline-offset: 2px; }
+.settings .switch-row { margin-top: 12px; height: auto; min-height: 56px; padding: 10px 14px; }
+.settings .switch-row .sub { white-space: normal; }
 .settings-lead { color: var(--dim); margin: 0 6px 16px; line-height: 1.5; }
 .remote-settings { padding: 16px; border-radius: 10px; background: var(--card); }
 .remote-settings h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
