@@ -488,3 +488,31 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
   UI checked in the browser pane with bright 49, 0, 100, -1 and missing; the phone sent
   {t:"bright", v:0.63}. Not tested on a desktop without a built-in display (WMI throws "Not
   supported" there, which maps to -1).
+
+## 2026-11-16 - Paired phones forgotten on restart; phone app stuck on old versions
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-16
+- Type: Bug fix
+- Area: PC host (remote pairing), phone remote PWA
+- Status: On branch fix/remote-pairing-persist (not merged, not pushed); fixed exe installed on the
+  Surface; phone app deployed (version 29aaf327, cache xdeck-remote-v8)
+- Summary: The owner saw the phone remote "only work when the PC is fully up to date". Root cause
+  was not versions: Remote.Save re-exported the PC's private key, and a CngKey imported from
+  remote.json has export policy None, so every save after the first start threw (swallowed).
+  Phones paired later lived only in memory, and after any restart (update, reboot) the PC dropped
+  everything they sent while the relay still showed "Connected". Fix: keep the stored protected key
+  blob, log load/save errors to remote.log, and unpair at the relay a phone the PC does not know
+  (the phone then shows "Not paired"). Second issue: the installed Android PWA stays alive for days
+  and kept an old OBS tab instead of Apps; the page now checks for a new sw.js on every return to
+  the screen and reloads when a new worker takes control (not while touching, pairing or hidden).
+- Agent: Claude Code (Opus 5.5, no subagents; machine in critical memory mode)
+- Repo / Branch: Skale-Club/xdeck / fix/remote-pairing-persist
+- Tests: Reproduced the CNG export failure in PowerShell (.NET Framework). build.ps1 -Install
+  (7 s); the new exe rewrote remote.json on start and logged the forgotten phone. Phone tests 9/9
+  (2 new for the reload rules). Live site checked after deploy. Pending: owner re-pairs and
+  confirms the pairing survives an Xdeck restart.
+- Note: the agent shell and the owner's terminal use different wrangler config folders; deploy ran
+  in the owner's terminal. wrangler login fails in the browser with HTTP 431 on the localhost
+  callback; pasting the callback address into curl against 127.0.0.1:8976 works.
