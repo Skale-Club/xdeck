@@ -516,3 +516,36 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Note: the agent shell and the owner's terminal use different wrangler config folders; deploy ran
   in the owner's terminal. wrangler login fails in the browser with HTTP 431 on the localhost
   callback; pasting the callback address into curl against 127.0.0.1:8976 works.
+
+## 2026-11-16 - Remote health, self-test + CI, auto deploy, banner settings, phone extras
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-16
+- Type: Feature + infrastructure
+- Area: Phone remote, PC host, banners, CI/CD
+- Status: Merged into dev locally (not pushed); installed on the Surface; phone app NOT deployed
+  (live site still cache v8; dev has v10). Release (VERSION 0.7.8 -> 0.7.9) pending owner OK.
+- Summary:
+  - Banners follow the display scale (were half size at 200%).
+  - Health: phone pings the PC (ping/pong with ver + caps); "Connected" only when the PC answers,
+    "PC not responding" after silence; legacy PCs detected from state replies; per-feature
+    "Needs Xdeck X" notes replace the blanket "Update Xdeck". Caps list in Remote.Caps.
+  - `Xdeck.exe --selftest` (9 checks incl. remote.json survives restarts; proven to fail on the
+    old CNG export bug), run by build.ps1; first CI workflow (.github/workflows/ci.yml).
+  - deploy-remote.yml deploys remote/ on pushes to main after the phone tests and a sw.js CACHE
+    bump check (tools/check-sw-bump.cjs); smoke-checks the live sw.js. Needs owner setup:
+    secrets CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and a "production" environment.
+  - Banner settings in the panel (banner.ini): corner, size, quiet mode (SHQueryUserNotificationState,
+    default on, low-battery alerts exempt); banners open on the monitor under the mouse.
+  - Phone: touchpad speed / scroll speed / reverse scrolling (localStorage xdeck-pad), landscape
+    layout, per-app volume mixer (caps "mixer", messages appvol/appmute), controller batteries
+    with a one-time low-battery toast (caps "padbattery").
+- Agent: Claude Code. Opus 5.5 orchestrated: protocol design, briefs, review of every diff,
+  fixes (reverse-scrolling label, no full push per mixer slider step, a commit message typo),
+  builds, self-test, install. Sonnet 5.5 subagents (one at a time, light mode) implemented:
+  health/handshake, self-test + CI, deploy workflow, banner settings, phone extras.
+- Repo / Branch: Skale-Club/xdeck / dev (branches merged and deleted)
+- Tests: build.ps1 self-test ALL PASS (9); node tests 38/38; check-sw-bump OK. Not verified on a
+  real phone (landscape, mixer, pad toast need the phone app deployed) nor GitHub Actions runs
+  (need a push). Estimate 2h30, actual ~20 min (09:14 -> 09:35).
