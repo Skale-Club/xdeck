@@ -73,17 +73,17 @@ static class MakeIcon
         {
             int size;
             if (!int.TryParse(args[1], out size) || size < 16 || size > 4096) { Console.Error.WriteLine("bad size " + args[1]); return 1; }
-            Save(Draw(size, args.Length == 4 && args[3] == "--bleed", false), args[2]);
+            Save(Draw(size, args.Length == 4 && args[3] == "--bleed", false, true), args[2]);
             return 0;
         }
         // MakeIcon --png <dir>: the phone remote app's icons (remote\public)
         if (args.Length == 2 && args[0] == "--png")
         {
             Directory.CreateDirectory(args[1]);
-            Save(Draw(192), Path.Combine(args[1], "icon-192.png"));
-            Save(Draw(512), Path.Combine(args[1], "icon-512.png"));
-            Save(Draw(512, true), Path.Combine(args[1], "icon-maskable-512.png"));   // Android crops it to its own shape
-            Save(Draw(180, true), Path.Combine(args[1], "apple-touch-icon.png"));    // iOS rounds the corners itself
+            Save(Draw(192, false, false, true), Path.Combine(args[1], "icon-192.png"));
+            Save(Draw(512, false, false, true), Path.Combine(args[1], "icon-512.png"));
+            Save(Draw(512, true, false, true), Path.Combine(args[1], "icon-maskable-512.png"));   // Android crops it to its own shape
+            Save(Draw(180, true, false, true), Path.Combine(args[1], "apple-touch-icon.png"));    // iOS rounds the corners itself
             return 0;
         }
         if (args.Length != 1) { Console.Error.WriteLine("usage: MakeIcon <out.ico> | MakeIcon --png <dir>"); return 1; }
@@ -114,7 +114,7 @@ static class MakeIcon
 
     // fullBleed: the cyan fills the square (for icons the system masks), with the knob at 56% so it
     // sits inside the centre that every mask keeps. inset: the .ico leaves a 4% margin round the tile.
-    static Bitmap Draw(int s, bool fullBleed = false, bool inset = true)
+    static Bitmap Draw(int s, bool fullBleed = false, bool inset = true, bool phone = false)
     {
         Bitmap bmp = new Bitmap(s, s, PixelFormat.Format32bppArgb);
         using (Graphics g = Graphics.FromImage(bmp))
@@ -130,7 +130,9 @@ static class MakeIcon
                 else using (GraphicsPath p = Rounded(box, r)) g.FillPath(fill, p);
             }
             bool small = s <= 24;
-            float frac = fullBleed ? 0.56f : small ? 0.74f : 0.64f;
+            // phone: home-screen icons get a bigger knob (80% of the tile, 78% full-bleed: still inside the
+            // 80% circle every Android mask keeps), because the launcher shows them small.
+            float frac = phone ? (fullBleed ? 0.78f : 0.80f) : fullBleed ? 0.56f : small ? 0.74f : 0.64f;
             float k = side * frac / 24f;                       // glyph units -> pixels
             Knob(g, box.X + side * (1 - frac) / 2, box.Y + side * (1 - frac) / 2, k, ink, tile, !small);
         }
