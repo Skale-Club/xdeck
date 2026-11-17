@@ -4,7 +4,7 @@
 
 - **New look: the Skale Club family design (skale.css v2).** The panel and the phone remote move to the family navy surfaces with Xdeck's own signal colour, cyan `#3cc6f2`, on every PC. The accent no longer follows the Windows accent colour. Section titles are mono labels, numbers (volume, battery, codes) are mono and stop jittering, buttons share one style (primary, secondary, ghost), and keyboard focus is visible.
 - **New icon: a volume knob** replaces the gear in the tray, the app icon, the installer and the phone icons (`tools/MakeIcon.cs` draws it; the mark lives in skaleclub-apps `design/skale-css/marks/xdeck.svg`).
-- **Phone remote:** the touchpad has a dot-grid surface with its gestures as a legend on the bottom edge, the mouse buttons read L / M / R, keys look like keycaps, the PC switcher is a pill, and the active tab is lit. `sw.js` CACHE v11.
+- **Phone remote:** the touchpad has a dot-grid surface with its gestures as a legend on the bottom edge, the mouse buttons read L / M / R, keys look like keycaps, the PC switcher is a pill, and the active tab is lit. Text, buttons and the tab bar are about 15% larger than before. The home-screen icon's knob is larger (80% of the icon, 78% on masked icons). `sw.js` CACHE v12.
 
 ## 0.7.9 — 2026-11-16
 

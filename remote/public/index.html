@@ -29,19 +29,19 @@
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: radial-gradient(420px 300px at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 65%), var(--bg); color: var(--text); overflow: hidden;
-    font: 15px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+    font: 17px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
   body { display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 10px; padding: calc(12px + var(--safe-t)) 16px 8px; }
-  .gear { width: 24px; height: 24px; flex: none; }
+  .gear { width: 28px; height: 28px; flex: none; }
   .pcbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: var(--card); color: var(--text);
-    box-shadow: inset 0 0 0 1px var(--line); border-radius: 10px; height: 34px;
-    font: 650 17px -apple-system, "Segoe UI", sans-serif; padding: 0 12px; text-align: left; }
+    box-shadow: inset 0 0 0 1px var(--line); border-radius: 10px; height: 40px;
+    font: 650 19px -apple-system, "Segoe UI", sans-serif; padding: 0 12px; text-align: left; }
   .pcbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pcbtn svg { width: 14px; height: 14px; color: var(--dim); flex: none; }
-  .status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); flex: none; }
-  .health { margin: 0 16px 4px; font-size: 12px; color: var(--dim); }
+  .pcbtn svg { width: 16px; height: 16px; color: var(--dim); flex: none; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--dim); flex: none; }
+  .health { margin: 0 16px 4px; font-size: 13.5px; color: var(--dim); }
   .health[hidden] { display: none; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--amber); }
   .status.on .dot { background: var(--green); }
   .status.bad .dot { background: var(--red); }
   main { flex: 1; min-height: 0; position: relative; }
@@ -49,8 +49,8 @@
   section.on { display: flex; }
   nav { display: flex; padding: 6px 8px calc(6px + var(--safe-b)); background: #04070d; box-shadow: inset 0 1px 0 #111a2e; }
   nav button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; border: 0; background: none;
-    color: var(--faint); font: 600 11px -apple-system, "Segoe UI", sans-serif; position: relative; }
-  nav button svg { width: 24px; height: 24px; }
+    color: var(--faint); font: 600 12.5px -apple-system, "Segoe UI", sans-serif; position: relative; }
+  nav button svg { width: 27px; height: 27px; }
   nav button.on { color: var(--text); }
   nav button.on svg { color: var(--accent); }
   nav button.on::before { content: ""; position: absolute; top: 0; left: 50%; width: 18px; height: 2px; margin-left: -9px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
@@ -59,36 +59,36 @@
     box-shadow: inset 0 0 0 1px var(--line); }
   .pad.drag { box-shadow: inset 0 0 0 2px var(--accent); }
   .pad-hint { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; padding: 0 12px;
-    font: 700 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); pointer-events: none; }
+    font: 700 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); pointer-events: none; }
   .pad-hint b { color: var(--dim); font-weight: 700; }
   .row { display: flex; gap: 10px; }
-  .btn { flex: 1; min-height: 52px; border: 0; border-radius: 12px; background: var(--card); color: var(--text);
-    font: 600 15px -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; touch-action: manipulation; box-shadow: inset 0 0 0 1px var(--line); }
+  .btn { flex: 1; min-height: 58px; border: 0; border-radius: 12px; background: var(--card); color: var(--text);
+    font: 600 17px -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; touch-action: manipulation; box-shadow: inset 0 0 0 1px var(--line); }
   .btn:active, .btn.held { background: var(--hot); }
-  .btn svg { width: 24px; height: 24px; }
-  .btn.big { min-height: 72px; }
+  .btn svg { width: 26px; height: 26px; }
+  .btn.big { min-height: 80px; }
   .btn.accent { background: var(--accent); color: var(--on-accent); }
-  .btn.small { min-height: 44px; font-size: 13px; }
+  .btn.small { min-height: 50px; font-size: 15px; }
   /* physical key edge for the Keys tab and the mouse buttons */
   #tab-keys .btn.small, .mbtns .btn:not(.cfg) { box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 -3px 0 #04070d, 0 0 0 1px var(--line);
-    font: 700 13px var(--mono); letter-spacing: .06em; }
+    font: 700 15px var(--mono); letter-spacing: .06em; }
   #tab-keys .btn.small:active, .mbtns .btn:not(.cfg):active { box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 -1px 0 #04070d, 0 0 0 1px var(--line); }
   .btn:disabled { opacity: .5; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .lbl { font: 700 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 6px 2px -4px; }
+  .lbl { font: 700 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 6px 2px -4px; }
   textarea { width: 100%; min-height: 96px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); padding: 12px;
-    font: 16px -apple-system, "Segoe UI", sans-serif; resize: none; outline: none; user-select: text; -webkit-user-select: text; box-shadow: inset 0 0 0 1px var(--line); }
+    font: 17px -apple-system, "Segoe UI", sans-serif; resize: none; outline: none; user-select: text; -webkit-user-select: text; box-shadow: inset 0 0 0 1px var(--line); }
   textarea:focus { box-shadow: inset 0 0 0 2px var(--ring); }
   .mods .btn.on { background: var(--accent); color: var(--on-accent); }
   .outs { display: flex; flex-direction: column; gap: 8px; }
-  .out { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 14px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+  .out { display: flex; align-items: center; gap: 12px; min-height: 62px; padding: 0 14px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
   .out.on { box-shadow: inset 0 0 0 2px var(--ring); }
   .out .nm { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .out svg { width: 22px; height: 22px; flex: none; color: var(--dim); }
+  .out svg { width: 25px; height: 25px; flex: none; color: var(--dim); }
   .out.on svg { color: var(--text); }
   .wait { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: var(--card);
-    color: var(--dim); font-size: 13.5px; text-align: center; margin-top: 6px; box-shadow: inset 0 0 0 1px var(--line); }
+    color: var(--dim); font-size: 15px; text-align: center; margin-top: 6px; box-shadow: inset 0 0 0 1px var(--line); }
   .wait .btn { flex: none; width: 100%; background: var(--hot); }
   .out .ck { color: var(--accent); font-weight: 700; visibility: hidden; }
   .out.on .ck { visibility: visible; }
@@ -96,7 +96,7 @@
   /* Volume slider, Material 3 style (same as the PC panel): a thick rounded track, the filled part
      in the accent, a gap, a slim upright handle, a dot at the end. --p is set by device() below. */
   .vol input { --h: 16px; --knob: 40px; --gap: 6px; --on: var(--accent); --p: 0%;
-    flex: 1; height: 44px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
+    flex: 1; height: 48px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
   .vol.muted input { --on: var(--faint); }
   .vol input:disabled { opacity: .4; }
   .vol input::-webkit-slider-runnable-track { height: var(--h); border-radius: calc(var(--h) / 2);
@@ -109,39 +109,39 @@
     margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 2px; background: var(--text); transition: width .12s; }
   .vol input::-moz-range-thumb { width: 4px; height: var(--knob); border: 0; border-radius: 2px; background: var(--text); }
   .vol input:active::-webkit-slider-thumb { width: 2px; }
-  .vol .pct { width: 52px; text-align: right; color: var(--dim); font: 600 13px var(--mono); font-variant-numeric: tabular-nums; }
+  .vol .pct { width: 58px; text-align: right; color: var(--dim); font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
   .vol .sun { display: grid; place-items: center; padding: 4px; color: var(--text); }
   #brightBox { display: flex; flex-direction: column; gap: 12px; }
   #brightBox[hidden] { display: none; }
-  .vol svg { width: 24px; height: 24px; }
-  .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; margin: 0; }
+  .vol svg { width: 26px; height: 26px; }
+  .note { color: var(--dim); font-size: 14px; text-align: center; padding: 4px 12px; margin: 0; }
   .btn.danger { color: var(--red); }
 
   /* touchpad settings, mixer, controllers, toast */
-  .btn.cfg { flex: none; width: 52px; }
+  .btn.cfg { flex: none; width: 58px; }
   #padCfg { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 4; max-width: 460px; margin: 0 auto; max-height: 100%; overflow-y: auto;
     background: #111a2e; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.5), inset 0 0 0 1px var(--line); }
   #padCfg .cfgrow { display: flex; align-items: center; gap: 10px; }
-  #padCfg .cfgl { width: 64px; flex: none; font-size: 13px; font-weight: 600; color: var(--dim); }
+  #padCfg .cfgl { width: 72px; flex: none; font-size: 15px; font-weight: 600; color: var(--dim); }
   #padCfg .vol { flex: 1; min-width: 0; padding: 0 10px; background: var(--hot); }
   #padCfg .vol .pct { width: 44px; }
   #padSpeedPct { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .seg { display: flex; flex: 1; gap: 6px; }
-  .seg .btn { min-height: 40px; font-size: 13px; background: var(--hot); }
+  .seg .btn { min-height: 46px; font-size: 15px; background: var(--hot); }
   .seg .btn.on, #padNatural.on { background: var(--accent); color: var(--on-accent); }
   #mixBox, #padsBox { display: flex; flex-direction: column; gap: 8px; }
   #mixList { display: flex; flex-direction: column; gap: 8px; }
   .mixrow { padding: 6px 14px 6px 12px; }
   .mixmain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .mixmain .mixnm { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 4px; }
+  .mixmain .mixnm { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 4px; }
   .mixmain input { flex: none; width: 100%; }
-  .out.padrow .bt { color: var(--dim); font: 600 13px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .out.padrow .bt { color: var(--dim); font: 600 15px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .bat { display: inline-flex; gap: 3px; }
-  .bat i { width: 7px; height: 16px; border-radius: 2px; background: var(--off); }
+  .bat i { width: 8px; height: 18px; border-radius: 2px; background: var(--off); }
   .bat i.on { background: var(--c); }
   #toast { position: fixed; left: 16px; right: 16px; top: calc(12px + var(--safe-t)); z-index: 12; max-width: 420px; margin: 0 auto; padding: 12px 14px;
-    border-radius: 12px; background: #111a2e; border-left: 4px solid var(--amber); box-shadow: 0 6px 24px rgba(0,0,0,.5); font-weight: 600; font-size: 14px; }
+    border-radius: 12px; background: #111a2e; border-left: 4px solid var(--amber); box-shadow: 0 6px 24px rgba(0,0,0,.5); font-weight: 600; font-size: 15.5px; }
 
   /* landscape (a phone on its side): compact header and tab bar, the pad fills the height with the
      mouse buttons beside it. Portrait is untouched. */
@@ -161,18 +161,18 @@
 
   /* apps */
   .chips { display: flex; gap: 8px; margin-top: 6px; }
-  .chip { flex: 1; min-width: 0; min-height: 68px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); position: relative; box-shadow: inset 0 0 0 1px var(--line);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 600 12.5px -apple-system, "Segoe UI", sans-serif; }
-  .chip svg { width: 28px; height: 28px; }
+  .chip { flex: 1; min-width: 0; min-height: 76px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); position: relative; box-shadow: inset 0 0 0 1px var(--line);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 600 14px -apple-system, "Segoe UI", sans-serif; }
+  .chip svg { width: 30px; height: 30px; }
   .chip.on { box-shadow: inset 0 0 0 2px var(--ring); }
   .chip .run { position: absolute; top: 9px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
   #appBody { display: flex; flex-direction: column; gap: 12px; }
   #appBody .grid3 { gap: 12px; }
   #appBody .lbl { margin: 4px 2px -4px; }
   .apphead { display: flex; align-items: center; gap: 10px; padding: 0 2px; margin-top: 6px; }
-  .apphead svg { width: 22px; height: 22px; flex: none; }
-  .apphead .nm { flex: 1; font-weight: 650; font-size: 17px; }
-  .apphead .st { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); }
+  .apphead svg { width: 25px; height: 25px; flex: none; }
+  .apphead .nm { flex: 1; font-weight: 650; font-size: 19px; }
+  .apphead .st { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--dim); }
   .apphead .st i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
   .apphead .st i.on { background: var(--green); }
 
@@ -185,12 +185,12 @@
   .pair-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; font: 700 24px/1 "Xdeck Brand", -apple-system, "Segoe UI", sans-serif; }
   .pair-brand span { line-height: 1; }
   #pair .logo { width: 44px; height: 44px; flex: none; }
-  #pair h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -.02em; }
-  #pair p { margin: 12px 0 0; color: var(--dim); max-width: 330px; font-size: 14px; line-height: 21px; }
+  #pair h1 { margin: 0; font-size: 30px; line-height: 34px; font-weight: 600; letter-spacing: -.02em; }
+  #pair p { margin: 12px 0 0; color: var(--dim); max-width: 330px; font-size: 15.5px; line-height: 23px; }
   .pair-stage { width: 100%; display: flex; flex-direction: column; align-items: center; }
   #pairLead { max-width: 290px !important; }
   #findBtn { margin-top: 28px; }
-  #pair .quiet { border: 0; background: none; color: var(--dim); font: 400 14px/21px -apple-system, "Segoe UI", sans-serif; padding: 0 8px; min-height: 36px; cursor: pointer; }
+  #pair .quiet { border: 0; background: none; color: var(--dim); font: 400 15.5px/23px -apple-system, "Segoe UI", sans-serif; padding: 0 8px; min-height: 36px; cursor: pointer; }
   #haveCode { margin-top: 26px; }
   #pairBack { align-self: flex-start; margin: 0 0 24px -8px; color: var(--text); }
   #pair.code-stage .pair-content { padding-top: 48px; }
@@ -200,14 +200,14 @@
     font: 700 32px var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .18em; outline: none; user-select: text; -webkit-user-select: text; box-shadow: inset 0 0 0 1px var(--line); }
   .code::placeholder { color: var(--faint); }
   .code:focus { box-shadow: inset 0 0 0 2px var(--ring); }
-  #pairErr { color: var(--red); font-size: 13.5px; line-height: 20px; margin-top: 16px; }
+  #pairErr { color: var(--red); font-size: 15px; line-height: 20px; margin-top: 16px; }
   #pairErr:empty { display: none; }
   #pair .btn { width: 100%; max-width: 330px; min-height: 54px; flex: none; }
   #pairExtras { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
   #pairExtras:has(> :not([hidden])) { margin-top: 24px; }
-  #pairExtras .hint { margin: 0; font-size: 13px; }
+  #pairExtras .hint { margin: 0; font-size: 14.5px; }
   @media (max-height: 560px) { #pair.code-stage .pair-content { padding-top: 44px; } #pair.code-stage .pair-brand { margin-bottom: 20px; } }
-  .hint { font-size: 13px; color: var(--dim); max-width: 330px; }
+  .hint { font-size: 14.5px; color: var(--dim); max-width: 330px; }
 
   /* PC menu */
   #menu { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.45); display: none; }
