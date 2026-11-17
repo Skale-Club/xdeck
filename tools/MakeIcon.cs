@@ -1,6 +1,9 @@
-// Writes Xdeck's app icon: a white gear (the same 8-tooth gear src\Xdeck.cs draws in the tray) on a
-// rounded Windows-blue square, so it reads on light and dark backgrounds. build.ps1 compiles and
+// Writes Xdeck's app icon: the volume-knob mark (skaleclub-apps/design/skale-css/marks/xdeck.svg) on a
+// signal-cyan rounded square: a dark knob with a cut-out pointer, five lit ticks and two dim ticks.
+// At 16..24 px the dim ticks go and the glyph grows so it stays legible. build.ps1 compiles and
 // runs this on every build:  MakeIcon.exe <out.ico>
+//   MakeIcon --png <size> <out.png> [--bleed]   one PNG of the tile (--bleed: square, no rounding,
+//                                               smaller glyph, for icons the system masks)
 // 16..64 px are 32-bit bitmaps (every Windows tool reads those), 256 px is PNG.
 using System;
 using System.Collections.Generic;
@@ -65,6 +68,14 @@ static class MakeIcon
             }
             return 0;
         }
+        // MakeIcon --png <size> <out.png> [--bleed]: one PNG of the tile, or of the full-bleed square
+        if ((args.Length == 3 || args.Length == 4) && args[0] == "--png")
+        {
+            int size;
+            if (!int.TryParse(args[1], out size) || size < 16 || size > 4096) { Console.Error.WriteLine("bad size " + args[1]); return 1; }
+            Save(Draw(size, args.Length == 4 && args[3] == "--bleed", false), args[2]);
+            return 0;
+        }
         // MakeIcon --png <dir>: the phone remote app's icons (remote\public)
         if (args.Length == 2 && args[0] == "--png")
         {
@@ -101,25 +112,57 @@ static class MakeIcon
 
     static void Save(Bitmap b, string path) { using (b) b.Save(path, ImageFormat.Png); }
 
-    // fullBleed: the blue fills the square (for icons the system masks), with the gear inside the
-    // centre 80% that every mask keeps
-    static Bitmap Draw(int s, bool fullBleed = false)
+    // fullBleed: the cyan fills the square (for icons the system masks), with the knob at 56% so it
+    // sits inside the centre that every mask keeps. inset: the .ico leaves a 4% margin round the tile.
+    static Bitmap Draw(int s, bool fullBleed = false, bool inset = true)
     {
         Bitmap bmp = new Bitmap(s, s, PixelFormat.Format32bppArgb);
         using (Graphics g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            float pad = fullBleed || s <= 20 ? 0 : s * 0.04f, side = s - 2 * pad, r = side * 0.22f;
+            Color tile = Color.FromArgb(0x3C, 0xC6, 0xF2), ink = Color.FromArgb(0x04, 0x07, 0x0D);
+            float pad = !fullBleed && inset && s > 20 ? s * 0.04f : 0, side = s - 2 * pad, r = side * 0.22f;
             RectangleF box = new RectangleF(pad, pad, side, side);
-            using (LinearGradientBrush fill = new LinearGradientBrush(box, Color.FromArgb(0x1A, 0x8C, 0xE6), Color.FromArgb(0x00, 0x62, 0xB8), 90f))
+            using (Brush fill = new SolidBrush(tile))
             {
                 if (fullBleed) g.FillRectangle(fill, box);
-                else using (GraphicsPath tile = Rounded(box, r)) g.FillPath(fill, tile);
+                else using (GraphicsPath p = Rounded(box, r)) g.FillPath(fill, p);
             }
-            Gear(g, s / 2f, s / 2f, side * (fullBleed ? 0.28f : s <= 24 ? 0.40f : 0.34f), Color.White);
+            bool small = s <= 24;
+            float frac = fullBleed ? 0.56f : small ? 0.74f : 0.64f;
+            float k = side * frac / 24f;                       // glyph units -> pixels
+            Knob(g, box.X + side * (1 - frac) / 2, box.Y + side * (1 - frac) / 2, k, ink, tile, !small);
         }
         return bmp;
+    }
+
+    // The mark's glyph on its 24-unit grid, origin (ox, oy), k pixels per unit: the knob, a pointer cut
+    // out of it in the pointer colour, five lit ticks and (dim) two ticks at 32%.
+    static void Knob(Graphics g, float ox, float oy, float k, Color ink, Color pointer, bool dim)
+    {
+        using (Brush b = new SolidBrush(ink))
+        {
+            g.FillEllipse(b, ox + (12f - 5.9f) * k, oy + (12.6f - 5.9f) * k, 11.8f * k, 11.8f * k);
+            float[,] lit = { { 5.71f, 18.89f }, { 3.1f, 12.6f }, { 5.71f, 6.31f }, { 12f, 3.7f }, { 18.29f, 6.31f } };
+            for (int i = 0; i < 5; i++) Dot(g, b, ox, oy, k, lit[i, 0], lit[i, 1], 1.3f);
+        }
+        if (dim)
+            using (Brush b = new SolidBrush(Color.FromArgb(82, ink)))
+            {
+                Dot(g, b, ox, oy, k, 20.9f, 12.6f, 1f);
+                Dot(g, b, ox, oy, k, 18.29f, 18.89f, 1f);
+            }
+        using (Pen p = new Pen(pointer, 2f * k))
+        {
+            p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
+            g.DrawLine(p, ox + 12.9f * k, oy + 11.7f * k, ox + 15.2f * k, oy + 9.4f * k);
+        }
+    }
+
+    static void Dot(Graphics g, Brush b, float ox, float oy, float k, float x, float y, float r)
+    {
+        g.FillEllipse(b, ox + (x - r) * k, oy + (y - r) * k, 2 * r * k, 2 * r * k);
     }
 
     static GraphicsPath Rounded(RectangleF b, float r)
@@ -132,32 +175,6 @@ static class MakeIcon
         p.AddArc(b.X, b.Bottom - d, d, d, 90, 90);
         p.CloseFigure();
         return p;
-    }
-
-    // Same geometry as XdeckApp.Gear in src\Xdeck.cs.
-    static void Gear(Graphics g, float cx, float cy, float r, Color c)
-    {
-        const int teeth = 8;
-        float rOut = r, rIn = r * 0.74f;
-        List<PointF> pts = new List<PointF>();
-        for (int i = 0; i < teeth; i++)
-        {
-            double a = i * 2 * Math.PI / teeth;
-            double half = Math.PI / teeth;
-            double[] angles = { a - half * 0.55, a - half * 0.38, a + half * 0.38, a + half * 0.55 };
-            float[] radii = { rIn, rOut, rOut, rIn };
-            for (int k = 0; k < 4; k++)
-                pts.Add(new PointF(cx + (float)(Math.Cos(angles[k]) * radii[k]), cy + (float)(Math.Sin(angles[k]) * radii[k])));
-            double gapA = a + half;
-            pts.Add(new PointF(cx + (float)(Math.Cos(gapA) * rIn * 0.98), cy + (float)(Math.Sin(gapA) * rIn * 0.98)));
-        }
-        using (GraphicsPath p = new GraphicsPath(FillMode.Alternate))
-        {
-            p.AddPolygon(pts.ToArray());
-            float h = r * 0.34f;
-            p.AddEllipse(cx - h, cy - h, 2 * h, 2 * h);
-            using (Brush b = new SolidBrush(c)) g.FillPath(b, p);
-        }
     }
 
     static byte[] Png(Bitmap b)

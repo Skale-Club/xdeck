@@ -1,19 +1,27 @@
 @font-face { font-family: "Xdeck Brand"; src: url("fonts/xdeck-brand-bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
 
 :root {
-  --bg: #202022;
-  --card: #2c2c2f;
-  --card-hot: #38383c;
-  --sub: #262629;
-  --line: #343438;
-  --text: #f5f5f7;
-  --dim: #a0a0a8;
-  --faint: #5a5a60;
-  --off: #3a3a3e;
-  --accent: #0078d4;
-  --green: #2ec478;
-  --amber: #f0b429;
-  --red: #e84855;
+  --bg: #070b14;
+  --card: #0f1729;
+  --card-hot: #17223b;
+  --sub: #0c1322;
+  --line: rgba(143,169,238,.11);
+  --line-strong: rgba(143,169,238,.24);
+  --hover: rgba(143,169,238,.07);
+  --text: #eef2fb;
+  --dim: #8b97b1;
+  --faint: #5b6782;
+  --off: #1d2a48;
+  --accent: #3cc6f2;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --on-accent: #04070d;
+  --green: #3dd68c;
+  --amber: #f5c451;
+  --red: #ff5468;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --ease: cubic-bezier(.2,.7,.2,1);
+  --ring: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255,255,255,.035);
+  --ring-sel: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 * { box-sizing: border-box; }
@@ -22,23 +30,24 @@ body { font: 13px/1.3 "Segoe UI Variable Text", "Segoe UI", sans-serif; user-sel
 #app { display: inline-block; }
 
 /* ------------------------------------------------ chrome */
-.view { padding: 14px 12px 12px; }
+.view { padding: 14px 12px 12px; background: radial-gradient(320px 200px at 100% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%), var(--bg); }
 .panel { width: 360px; }
 .tester { width: 600px; }
 .tester.k-handbrake { width: 420px; }
 .tester.k-handbrake .stage { height: 330px; }
 .tester.k-g29 { width: 660px; }
 header { display: flex; align-items: center; gap: 8px; min-height: 34px; margin: 0 2px 6px 6px; }
-header .brand-icon { width: 32px; height: 32px; border-radius: 8px; flex: none; }
-header h1.brand-name { font: 700 22px/1 "Xdeck Brand", "Segoe UI", sans-serif; letter-spacing: -.02em; }
+header .brand-icon { width: 28px; height: 28px; flex: none; display: block; }
+header h1.brand-name { font: 700 19px/1 "Xdeck Brand", "Segoe UI", sans-serif; letter-spacing: -.04em; text-transform: lowercase; }
 header .mark { width: 22px; height: 22px; color: var(--accent); display: grid; place-items: center; flex: none; }
 header .mark svg { width: 22px; height: 22px; }
 header h1 { font: 600 18px "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.icon-btn { width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; }
+.icon-btn { width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; transition: background 120ms var(--ease), box-shadow 120ms var(--ease), transform 120ms var(--ease); }
+.icon-btn:active { transform: translateY(1px); }
 .icon-btn svg { width: 14px; height: 14px; }
-.icon-btn:hover { background: var(--card-hot); color: var(--text); }
-.icon-btn.close:hover { background: #c42b1c; color: #fff; }
-h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); margin: 14px 6px 8px; }
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+.icon-btn.close:hover { background: var(--red); color: #fff; }
+h2 { font: 700 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 14px 6px 8px; }
 
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 9px; border-radius: 10px; font: 600 11px "Segoe UI", sans-serif; }
 .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -49,8 +58,9 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .row { display: flex; align-items: center; gap: 12px; border-radius: 8px; cursor: pointer; position: relative; }
 .row .ico { display: grid; place-items: center; flex: none; }
 .row .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dev { background: var(--card); border-radius: 8px; }
-.dev.open { box-shadow: inset 0 0 0 1.2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.dev { background: var(--card); border-radius: 12px; box-shadow: var(--ring); }
+.dev:hover { background: var(--card-hot); }
+.dev.open { box-shadow: var(--ring-sel); }
 .row.head { height: 46px; padding: 0 10px 0 8px; }
 .row.head .ico { width: 40px; height: 22px; color: var(--accent); }
 .row.head .ico svg { width: 22px; height: 22px; }
@@ -65,7 +75,7 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .vol.muted .mute { color: var(--red); }
 .vol.bright { padding: 9px 14px 9px 12px; margin-top: 0; }
 .vol.bright .mute { display: grid; place-items: center; }
-.vol .pct { width: 44px; text-align: right; color: var(--dim); font: 600 12px "Segoe UI", sans-serif; flex: none; }
+.vol .pct { width: 44px; text-align: right; color: var(--dim); font: 700 12px var(--mono); font-variant-numeric: tabular-nums; flex: none; }
 .vol.muted .pct { color: var(--red); }
 /* Volume slider, Material 3 style: a thick rounded track, the filled part in the accent, a gap,
    a slim upright handle, and a dot marking the end of the empty part. --p (0-100%) comes from
@@ -83,7 +93,7 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .row.item { height: 38px; margin: 6px 0 0 10px; padding: 0 14px 0 8px; background: var(--sub); }
 .row.item .ico { width: 40px; height: 17px; color: var(--dim); }
 .row.item .ico svg { width: 17px; height: 17px; }
-.row.item .name { color: #d7d7dc; font-size: 13.5px; }
+.row.item .name { color: var(--text); font-size: 13.5px; }
 .row.item:hover { background: var(--card-hot); }
 .chev { width: 24px; height: 24px; display: grid; place-items: center; color: var(--dim); transition: transform .15s; }
 .chev svg { width: 11px; height: 11px; }
@@ -109,7 +119,7 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .meter i.on:nth-child(12) { background: var(--red); }
 
 /* ------------------------------------------------ controller cards */
-.card { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 14px 0 10px; margin-bottom: 8px; border-radius: 8px; background: var(--card); cursor: pointer; }
+.card { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 14px 0 10px; margin-bottom: 8px; border-radius: 12px; background: var(--card); box-shadow: var(--ring); cursor: pointer; }
 .card:hover { background: var(--card-hot); }
 .disc { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); flex: none; }
 .disc svg { width: 22px; height: 22px; }
@@ -120,7 +130,7 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .switch { position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--off); flex: none; transition: background .15s; }
 .switch b { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--dim); transition: left .15s, background .15s; }
 .switch.on { background: var(--accent); }
-.switch.on b { left: 19px; background: #fff; }
+.switch.on b { left: 19px; background: var(--on-accent); }
 .ring-row { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 6px 10px; }
 .ring-dev { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; }
 .ring-name { width: 100%; text-align: center; font-size: 11px; overflow-wrap: anywhere; }
@@ -131,48 +141,54 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .ring-fill { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke-dasharray .4s; }
 .ring-ico { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text); }
 .ring-ico svg { width: 19px; height: 19px; }
-.ring-lbl { display: flex; align-items: center; gap: 2px; font: 600 10.5px "Segoe UI", sans-serif; height: 13px; }
+.ring-lbl { display: flex; align-items: center; gap: 2px; font: 700 10.5px var(--mono); font-variant-numeric: tabular-nums; height: 13px; }
 .ring-lbl .bolt { width: 6px; height: 9px; }
-.version-line { color: var(--faint); font-size: 11px; text-align: center; margin-top: 8px; }
+.version-line { color: var(--faint); font: 700 11px var(--mono); font-variant-numeric: tabular-nums; text-align: center; margin-top: 8px; }
 .card.upd { cursor: default; height: auto; min-height: 56px; padding-top: 8px; padding-bottom: 8px; }
 .card.upd:hover { background: var(--card); }
-.card.upd.ready { box-shadow: inset 0 0 0 1.2px color-mix(in srgb, var(--accent) 60%, transparent); }
-.card.tray-hint { cursor: default; height: auto; align-items: flex-start; padding-top: 10px; padding-bottom: 10px; box-shadow: inset 0 0 0 1.2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.card.upd.ready { box-shadow: var(--ring-sel); }
+.card.tray-hint { cursor: default; height: auto; align-items: flex-start; padding-top: 10px; padding-bottom: 10px; box-shadow: var(--ring-sel); }
 .card.tray-hint:hover { background: var(--card); }
 .card.tray-hint .disc { color: var(--accent); }
 .card.tray-hint .sub.wrap { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 .tray-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.tray-acts .link-btn:hover { color: var(--text); }
-.upd-btn { flex: none; height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--off); color: var(--text); font: 600 12px "Segoe UI", sans-serif; cursor: pointer; }
-.upd-btn:hover { background: var(--card-hot); }
-.upd-btn.go { background: var(--accent); color: #fff; }
-.upd-btn.go:hover { filter: brightness(1.1); }
+
+/* button family: secondary (.upd-btn/.pair-btn), primary (.go), ghost (.link-btn/.icon-btn), segmented (.seg) */
+.upd-btn, .pair-btn, .generate-code, .seg-btn, .link-btn { border: 0; border-radius: 8px; font: 600 12px "Segoe UI", sans-serif; cursor: pointer; transition: background 120ms var(--ease), box-shadow 120ms var(--ease), transform 120ms var(--ease), filter 120ms var(--ease); }
+.upd-btn:active, .pair-btn:active, .generate-code:active, .seg-btn:active, .link-btn:active { transform: translateY(1px); }
+.upd-btn, .pair-btn { flex: none; height: 30px; padding: 0 12px; background: var(--card-hot); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 rgba(255,255,255,.04); }
+.upd-btn:hover, .pair-btn:hover { background: #1d2a48; }
+
+.upd-btn.go, .generate-code.go { background: var(--accent); color: var(--on-accent); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 8px 20px -10px var(--accent); }
+.upd-btn.go:hover, .generate-code.go:hover { background: var(--accent); filter: brightness(1.08); }
+.upd-btn:disabled, .pair-btn:disabled, .generate-code:disabled { opacity: .45; cursor: default; }
+
 .pad-mode .upd-btn.nav-focus { outline-offset: 2px; }
 .upd-bar { position: relative; height: 4px; margin-top: 6px; border-radius: 2px; background: var(--off); overflow: hidden; }
 .upd-bar b { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; background: var(--accent); transition: width .2s; }
 .upd-bar.busy b { width: 35%; animation: upd-slide 1.1s ease-in-out infinite; }
 @keyframes upd-slide { from { left: -35%; } to { left: 100%; } }
-.remote-pair { display: flex; gap: 14px; align-items: center; margin: -2px 0 8px; padding: 12px; border-radius: 8px; background: var(--card); }
-.remote-code { flex: none; font: 700 30px "Segoe UI", sans-serif; letter-spacing: .06em; color: var(--text); padding: 0 6px; }
+.remote-pair { display: flex; gap: 14px; align-items: center; margin: -2px 0 8px; padding: 12px; border-radius: 12px; background: var(--card); box-shadow: var(--ring); }
+.remote-code { flex: none; font: 700 30px var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .06em; color: var(--text); padding: 0 6px; }
 .remote-txt { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--dim); }
 .remote-txt b { color: var(--text); }
-.remote-left { font: 600 12px "Segoe UI", sans-serif; color: var(--accent); }
+.remote-left { font: 700 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); }
 .banner-settings h3:not(:first-child) { margin-top: 16px; }
-.seg { display: flex; flex-wrap: wrap; gap: 6px; }
-.seg-btn { font: 600 12px "Segoe UI", sans-serif; color: var(--text); background: var(--off); border: 0; border-radius: 14px; padding: 6px 12px; cursor: pointer; }
-.seg-btn:hover { background: var(--card-hot); }
-.seg-btn.on { background: var(--accent); color: #fff; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 10px; background: #04070d; box-shadow: inset 0 0 0 1px var(--line); }
+.seg-btn { color: var(--dim); background: transparent; height: 26px; padding: 0 12px; border-radius: 7px; }
+.seg-btn:hover { color: var(--text); background: var(--hover); }
+.seg-btn.on { background: var(--card-hot); color: var(--text); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.4); }
 .pad-mode .seg-btn.nav-focus { outline-offset: 2px; }
 .settings .switch-row { margin-top: 12px; height: auto; min-height: 56px; padding: 10px 14px; }
 .settings .switch-row .sub { white-space: normal; }
 .settings-lead { color: var(--dim); margin: 0 6px 16px; line-height: 1.5; }
-.remote-settings { padding: 16px; border-radius: 10px; background: var(--card); }
+.remote-settings { padding: 16px; border-radius: 12px; background: var(--card); box-shadow: var(--ring); }
 .remote-settings h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
 .remote-settings p { margin: 0; color: var(--dim); font-size: 12px; line-height: 1.6; }
 .remote-settings b { color: var(--text); font-weight: 600; }
 .generate-code { display: block; width: 100%; height: 42px; margin: 20px 0 22px; }
-.generate-code:disabled { opacity: .5; cursor: default; }
-.settings-code { text-align: center; white-space: pre; font: 700 30px/1.2 Consolas, monospace; letter-spacing: .04em; }
+
+.settings-code { text-align: center; white-space: pre; font: 700 30px/1.2 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
 .remote-settings .remote-left { margin-top: 10px; text-align: center; }
 .remote-settings .code-placeholder { margin-top: 12px; text-align: center; }
 .remote-settings .link-btn { display: block; margin: 8px auto 0; }
@@ -180,18 +196,19 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .remote-status.error { color: var(--red); }
 .phone-state { font-size: 11px; color: var(--dim); }
 .pair-btn { display: block; width: 100%; height: 36px; margin: -2px 0 8px; }
-.phone-list { margin: -2px 0 8px; padding: 2px 12px; border-radius: 8px; background: var(--card); }
+.phone-list { margin: -2px 0 8px; padding: 2px 12px; border-radius: 12px; background: var(--card); box-shadow: var(--ring); }
 .phone-row { display: flex; align-items: center; gap: 10px; height: 36px; }
-.phone-row + .phone-row { border-top: 1px solid color-mix(in srgb, var(--text) 7%, transparent); }
+.phone-row + .phone-row { border-top: 1px solid var(--line); }
 .pdot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); flex: none; }
 .pdot.on { background: var(--green); }
 .pnm { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.link-btn { border: 0; background: none; color: var(--dim); font: 600 12px "Segoe UI", sans-serif; cursor: pointer; padding: 4px 6px; border-radius: 5px; }
-.link-btn:hover { color: var(--red); background: var(--card-hot); }
+.link-btn { background: transparent; color: var(--dim); padding: 4px 6px; border-radius: 6px; }
+.link-btn:hover { background: var(--hover); color: var(--text); }
+.link-btn.danger:hover { color: var(--red); }
 #tmouse { margin: 12px 0 6px; }
 #tmouse .card { margin-bottom: 0; }
 .wired.mouse-chip { color: var(--accent); }
-.battery { display: flex; align-items: center; gap: 8px; font: 600 13px "Segoe UI", sans-serif; white-space: nowrap; }
+.battery { display: flex; align-items: center; gap: 8px; font: 700 13px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bolt { width: 10px; height: 14px; color: var(--amber); margin-right: -3px; }
 .pills { display: flex; gap: 3px; margin-left: 2px; }
 .pills i { width: 4px; height: 20px; border-radius: 2px; background: var(--off); }
@@ -199,16 +216,17 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .pills i.next { animation: charge 1.2s ease-in-out infinite; }
 @keyframes charge { 0%, 100% { background: var(--off); } 50% { background: var(--bat); } }
 .tester .battery { margin-right: 6px; }
-.wired { color: var(--dim); font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; background: var(--sub); }
+.wired { color: var(--dim); font: 700 11px var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; background: var(--sub); }
 
 /* controller navigation: the focused item, and the button help under the panel */
 .pad-mode .nav-focus { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 .pad-mode .row.nav-focus, .pad-mode .card.nav-focus { background: var(--card-hot); }
 .pad-mode .vol.nav-focus { background: color-mix(in srgb, var(--accent) 10%, transparent); padding-top: 6px; margin-top: 0; }
-.pad-mode .icon-btn.nav-focus { color: var(--text); border-radius: 6px; }
+.pad-mode .icon-btn.nav-focus { color: var(--text); border-radius: 8px; }
+button:focus-visible, [data-act]:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pad-help { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin-top: 10px; color: var(--dim); font-size: 11.5px; }
 .hint-line.pad-combo { color: var(--dim); margin-top: 8px; }
-.pad-help b { font: 700 10.5px "Segoe UI", sans-serif; color: var(--text); background: var(--sub); border-radius: 4px; padding: 1px 5px; margin-right: 4px; }
+.pad-help b { font: 700 10.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); background: var(--sub); border-radius: 4px; padding: 1px 5px; margin-right: 4px; }
 
 /* ------------------------------------------------ tester */
 .stage { position: relative; height: 380px; display: grid; place-items: center; }
@@ -250,21 +268,21 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 /* line / silhouette artwork, recoloured */
 .art { width: 560px; height: 360px; }
 .art svg { width: 100%; height: 100%; overflow: visible; }
-.ds svg * { stroke: #8a8a94 !important; transition: fill .05s; }
+.ds svg * { stroke: var(--dim) !important; transition: fill .05s; }
 .ds svg [id="t1"], .ds svg [id="t2"] { display: none; }
 .ds svg > rect:first-of-type { stroke: none !important; }
-.ds svg [fill="#f00"], .ds svg path[style*="fill:#f00"] { fill: #8a8a94 !important; }
-.ds svg #l3, .ds svg #r3 { fill: #44444a !important; }
+.ds svg [fill="#f00"], .ds svg path[style*="fill:#f00"] { fill: var(--dim) !important; }
+.ds svg #l3, .ds svg #r3 { fill: var(--off) !important; }
 .ds svg .on, .ds svg .on * { fill: var(--accent) !important; stroke: var(--accent) !important; }
-.sil svg [style*="fill:#000000"], .sil svg [style*="fill:#000"] { fill: #3c3c42 !important; }
-.sil svg [style*="fill:#ffffff"], .sil svg [style*="fill:#fdfdfd"] { fill: #6c6c74 !important; }
+.sil svg [style*="fill:#000000"], .sil svg [style*="fill:#000"] { fill: var(--off) !important; }
+.sil svg [style*="fill:#ffffff"], .sil svg [style*="fill:#fdfdfd"] { fill: var(--faint) !important; }
 .sil svg .on { fill: var(--accent) !important; }
 
 /* shoulder strip for artwork without a top view */
 .shoulders { display: flex; justify-content: space-between; padding: 0 40px; margin-bottom: -6px; }
 .shoulders .side { display: flex; gap: 8px; align-items: center; }
 .sh { min-width: 46px; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--off); color: var(--dim); display: grid; place-items: center; font: 600 12px "Segoe UI", sans-serif; }
-.sh.on { background: var(--accent); color: #fff; }
+.sh.on { background: var(--accent); color: var(--on-accent); }
 .trig { width: 70px; height: 26px; border-radius: 13px; background: var(--off); position: relative; overflow: hidden; color: var(--dim); font: 600 12px "Segoe UI", sans-serif; display: grid; place-items: center; }
 .trig b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); width: 0; }
 .trig span { position: relative; }
@@ -274,12 +292,12 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 /* G29 */
 .g29 { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; }
 .g29-wheel { width: 430px; height: 355px; flex: none; }
-.g29-scale line { stroke: #1d8fd8; stroke-width: 2.2; stroke-linecap: round; opacity: .85; }
-.g29-range { fill: #1d8fd8; font: 600 11px "Segoe UI", sans-serif; letter-spacing: .08em; text-anchor: middle; }
-.g29-pointer { fill: #f5f5f7; }
+.g29-scale line { stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; opacity: .85; }
+.g29-range { fill: var(--accent); font: 600 11px "Segoe UI", sans-serif; letter-spacing: .08em; text-anchor: middle; }
+.g29-pointer { fill: var(--text); }
 .g29-rim { fill: none; stroke: #121214; stroke-width: 30; }
 .g29-stitch { fill: none; stroke: #2c2c31; stroke-width: 1.2; stroke-dasharray: 2 4; }
-.g29-marker { fill: #1d8fd8; }
+.g29-marker { fill: var(--accent); }
 .g29-spokes { fill: url(#spoke); stroke: #2a2a2e; stroke-width: 1.5; }
 .g29-brush { fill: none; stroke: #d6d6dc; stroke-width: 1.2; opacity: .5; }
 .g29-console { fill: #141416; stroke: #2e2e33; stroke-width: 1.5; }
@@ -296,28 +314,28 @@ h2 { font: 600 11px "Segoe UI", sans-serif; letter-spacing: .04em; text-transfor
 .g-screw { fill: #2e2e33; }
 .g-pslogo { filter: invert(1); opacity: .9; }
 .g29 .on, .g29 .on circle, .g29 .on rect { fill: var(--accent) !important; }
-.g29 .on .g-sym { stroke: #fff; }
+.g29 .on .g-sym { stroke: var(--on-accent); }
 .g29-pointer, .g29-wheel #g29-wheel { transition: transform .03s linear; }
 #g-ps.on { fill: #111113 !important; stroke: var(--accent); stroke-width: 5; }
 .g29-side { display: flex; flex-direction: column; align-items: center; gap: 18px; flex: 1; }
 .g29-angle { display: flex; flex-direction: column; align-items: center; }
-.g29-angle b { font: 600 30px "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+.g29-angle b { font: 700 30px var(--mono); font-variant-numeric: tabular-nums; }
 .g29-angle span { color: var(--dim); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
 .g29-pedals { width: 176px; height: 172px; }
 .pedal-shell { fill: #2a2a2e; stroke: #44444b; stroke-width: 1.5; }
 .pedal-fill { fill: var(--accent); }
 .pedal-groove { stroke: #121214; stroke-width: 3; stroke-linecap: round; opacity: .6; }
 .pedal-name { fill: var(--dim); font: 600 11px "Segoe UI", sans-serif; text-anchor: middle; }
-.pedal-pct { fill: var(--text); font: 600 12px "Segoe UI", sans-serif; text-anchor: middle; }
+.pedal-pct { fill: var(--text); font: 700 12px var(--mono); font-variant-numeric: tabular-nums; text-anchor: middle; }
 .bars { display: flex; gap: 14px; align-items: flex-end; height: 200px; }
 .bar { width: 26px; height: 180px; border-radius: 13px; background: var(--off); position: relative; overflow: hidden; }
 .bar b { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); height: 0; }
 .bar-label { color: var(--dim); font: 600 11px "Segoe UI", sans-serif; text-align: center; margin-top: 6px; }
-.bar-label.pct { color: var(--text); font-size: 13px; margin-top: 2px; }
+.bar-label.pct { color: var(--text); font: 700 13px var(--mono); font-variant-numeric: tabular-nums; margin-top: 2px; }
 .hb { width: 260px; height: 252px; overflow: visible; }
 .lever { height: 300px; }
 .lever .bar { width: 64px; height: 260px; border-radius: 20px; }
 .btn-grid { display: grid; grid-template-columns: repeat(6, 26px); gap: 6px; }
 .btn-grid i { width: 26px; height: 26px; border-radius: 50%; background: var(--off); color: var(--dim); font: 600 10px "Segoe UI", sans-serif; font-style: normal; display: grid; place-items: center; }
-.btn-grid i.on { background: var(--accent); color: #fff; }
-.deg { color: var(--dim); text-align: center; font: 600 13px "Segoe UI", sans-serif; margin-top: 8px; }
+.btn-grid i.on { background: var(--accent); color: var(--on-accent); }
+.deg { color: var(--dim); text-align: center; font: 700 13px var(--mono); font-variant-numeric: tabular-nums; margin-top: 8px; }

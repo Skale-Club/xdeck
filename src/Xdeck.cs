@@ -4028,38 +4028,32 @@ static class Ui
         }
     }
 
-    public static readonly Color Back = Color.FromArgb(32, 32, 34);
-    public static readonly Color Card = Color.FromArgb(44, 44, 47);
-    public static readonly Color Text = Color.FromArgb(245, 245, 247);
-    public static readonly Color Dim = Color.FromArgb(160, 160, 168);
-    public static readonly Color Faint = Color.FromArgb(90, 90, 96);
+    public static readonly Color Back = Color.FromArgb(7, 11, 20);      // skale.css v2 ink, --bg #070b14
+    public static readonly Color Card = Color.FromArgb(15, 23, 41);     // --card #0f1729
+    public static readonly Color Text = Color.FromArgb(238, 242, 251);   // --text #eef2fb
+    public static readonly Color Dim = Color.FromArgb(139, 151, 177);    // --dim #8b97b1
+    public static readonly Color Faint = Color.FromArgb(91, 103, 130);  // --faint #5b6782
 
-    public static Color Accent
-    {
-        get
-        {
-            try
-            {
-                object v = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM", "AccentColor", null);
-                if (v is int) { int c = (int)v; return Color.FromArgb(c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF); }
-            }
-            catch { }
-            return Color.FromArgb(0, 120, 212);
-        }
-    }
+    // Xdeck's own signal colour (skale.css v2, signal cyan #3cc6f2). It used to follow the Windows
+    // accent from the registry, so every PC showed a different Xdeck.
+    public static readonly Color Accent = Color.FromArgb(60, 198, 242);
+    public static readonly Color Good = Color.FromArgb(61, 214, 140);   // --green #3dd68c
+    public static readonly Color Warn = Color.FromArgb(245, 196, 81);   // --amber #f5c451
+    public static readonly Color Bad = Color.FromArgb(255, 84, 104);    // --red #ff5468
+    public static readonly Color Off = Color.FromArgb(29, 42, 72);      // --off #1d2a48
 
     public static Color BatteryColor(int pct)
     {
         if (pct < 0) return Faint;
-        if (pct <= 20) return Color.FromArgb(232, 72, 85);
-        if (pct <= 45) return Color.FromArgb(240, 180, 41);
-        return Color.FromArgb(46, 196, 120);
+        if (pct <= 20) return Bad;
+        if (pct <= 45) return Warn;
+        return Good;
     }
 
     // Rounded corners, dark frame and a thin border on Windows 11.
     public static void Frame(IntPtr hwnd)
     {
-        int round = 2, dark = 1, border = 0x00423F3C; // COLORREF 0x00BBGGRR
+        int round = 2, dark = 1, border = 0x005C3A2C; // COLORREF 0x00BBGGRR
         DwmSetWindowAttribute(hwnd, 33, ref round, 4);
         DwmSetWindowAttribute(hwnd, 20, ref dark, 4);
         DwmSetWindowAttribute(hwnd, 34, ref border, 4);
@@ -4511,10 +4505,10 @@ static class Ui
         int lit = (int)Math.Round(Math.Max(0, Math.Min(1, level)) * LevelCount);
         for (int i = 0; i < LevelCount; i++)
         {
-            Color on = i >= LevelCount - 1 ? Color.FromArgb(232, 72, 85) : i >= LevelCount - 3 ? Color.FromArgb(240, 180, 41) : Color.FromArgb(46, 196, 120);
+            Color on = i >= LevelCount - 1 ? Ui.Bad : i >= LevelCount - 3 ? Ui.Warn : Ui.Good;
             RectangleF r = new RectangleF(x + i * (LevelW + LevelGap), y, LevelW, LevelH);
             using (GraphicsPath p = Rounded(r, LevelW / 2))
-            using (Brush b = new SolidBrush(i < lit ? on : Color.FromArgb(58, 58, 62)))
+            using (Brush b = new SolidBrush(i < lit ? on : Ui.Off))
                 g.FillPath(b, p);
         }
     }
@@ -4527,7 +4521,7 @@ static class Ui
     public static void BatteryPills(Graphics g, float x, float y, int pct)
     {
         int lit = pct < 0 ? 0 : Math.Max(1, (int)Math.Ceiling(pct / (100.0 / PillCount)));
-        Color on = BatteryColor(pct), off = Color.FromArgb(62, 62, 66);
+        Color on = BatteryColor(pct), off = Ui.Off;
         for (int i = 0; i < PillCount; i++)
         {
             RectangleF r = new RectangleF(x + i * (PillW + PillGap), y, PillW, PillH);
@@ -4637,7 +4631,7 @@ class Banner : Form
     DateTime shownAt;
     int holdMs = 2200, baseTop;
     const int NoBattery = -2, Wired = -3;
-    static readonly Color Red = Color.FromArgb(232, 72, 85);
+    static readonly Color Red = Ui.Bad;
 
     // Xdeck is DPI aware, so Windows does not enlarge the banner: everything below is laid out in
     // 96-DPI units, the window is that times the screen's scale, and OnPaint scales the drawing.
@@ -4942,7 +4936,7 @@ class Banner : Form
         int lit = Math.Max(1, (int)Math.Ceiling(battery / (100.0 / Ui.PillCount)));
         for (int i = 0; i < Ui.PillCount; i++)
             using (GraphicsPath p = Ui.Rounded(new RectangleF(x + i * (w + gap), y, w, h), w / 2))
-            using (Brush b = new SolidBrush(i < lit ? on : Color.FromArgb(62, 62, 66)))
+            using (Brush b = new SolidBrush(i < lit ? on : Ui.Off))
                 g.FillPath(b, p);
     }
 
@@ -5792,43 +5786,40 @@ class XdeckApp : Form
         Application.Exit();
     }
 
-    // Tray glyph: an 8-tooth gear with a round hole.
-    static void Gear(Graphics g, float cx, float cy, float r, Color c)
+    // Tray glyph: the Xdeck volume knob (same geometry as the app mark, 24-unit grid, no tile): a white
+    // disc and five lit ticks, all white, with the pointer cut out of the disc (transparent), so the tray
+    // icon is a single colour like the other tray icons. (ox, oy) is the grid origin in pixels, k the
+    // pixels per grid unit.
+    static void Knob(Graphics g, float ox, float oy, float k, Color c)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        const int teeth = 8;
-        float rOut = r, rIn = r * 0.74f;
-        List<PointF> pts = new List<PointF>();
-        for (int i = 0; i < teeth; i++)
+        using (Brush b = new SolidBrush(c))
         {
-            double a = i * 2 * Math.PI / teeth;
-            double half = Math.PI / teeth;                  // one tooth + one gap per step
-            double[] angles = { a - half * 0.55, a - half * 0.38, a + half * 0.38, a + half * 0.55 };
-            float[] radii = { rIn, rOut, rOut, rIn };
-            for (int k = 0; k < 4; k++)
-                pts.Add(new PointF(cx + (float)(Math.Cos(angles[k]) * radii[k]), cy + (float)(Math.Sin(angles[k]) * radii[k])));
-            double gapA = a + half;                         // round the gap floor
-            pts.Add(new PointF(cx + (float)(Math.Cos(gapA) * rIn * 0.98), cy + (float)(Math.Sin(gapA) * rIn * 0.98)));
+            g.FillEllipse(b, ox + 6.1f * k, oy + 6.7f * k, 11.8f * k, 11.8f * k);          // knob: centre (12, 12.6), r 5.9
+            float[,] ticks = { { 5.71f, 18.89f }, { 3.1f, 12.6f }, { 5.71f, 6.31f }, { 12f, 3.7f }, { 18.29f, 6.31f } };
+            for (int i = 0; i < 5; i++)
+                g.FillEllipse(b, ox + (ticks[i, 0] - 1.3f) * k, oy + (ticks[i, 1] - 1.3f) * k, 2.6f * k, 2.6f * k);
         }
-        using (GraphicsPath p = new GraphicsPath(FillMode.Alternate))
+        CompositingMode was = g.CompositingMode;
+        g.CompositingMode = CompositingMode.SourceCopy;   // the pointer erases the disc: a cut-out
+        using (Pen p = new Pen(Color.Transparent, 2f * k))
         {
-            p.AddPolygon(pts.ToArray());
-            float h = r * 0.34f;
-            p.AddEllipse(cx - h, cy - h, 2 * h, 2 * h);     // alternate fill leaves the hole empty
-            using (Brush b = new SolidBrush(c)) g.FillPath(b, p);
+            p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
+            g.DrawLine(p, ox + 12.9f * k, oy + 11.7f * k, ox + 15.2f * k, oy + 9.4f * k);
         }
+        g.CompositingMode = was;
     }
 
-    // updateDot: an update is ready to install, so the gear wears a dot in the accent colour
-    // (bottom right, cut out of the gear so it reads at 16 px)
+    // updateDot: an update is ready to install, so the knob wears a dot in the accent colour
+    // (bottom right, cut out of the knob so it reads at 16 px)
     static Icon MakeTrayIcon(bool updateDot = false)
     {
         using (Bitmap bmp = new Bitmap(32, 32))
         {
             using (Graphics g = Graphics.FromImage(bmp))
             {
-                Gear(g, 16, 16, 15f, Color.White);
+                Knob(g, 16 - 10.7f * 1.7f, 16 - 11.3f * 1.7f, 1.7f, Color.White);
                 if (updateDot)
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;

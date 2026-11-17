@@ -19,7 +19,7 @@ const host = window.chrome && window.chrome.webview;
 const send = (m) => { if (host) host.postMessage(m); };
 const $app = document.getElementById("app");
 
-let state = { outs: [], mics: [], pads: [], defOut: null, defMic: null, accent: "#0078d4" };
+let state = { outs: [], mics: [], pads: [], defOut: null, defMic: null, accent: "" };
 let levels = {};
 let view = "panel";     // panel | tester | settings
 let requestingCode = false, codeRequestTimer = 0, codeRequestError = "";
@@ -220,7 +220,7 @@ function ringHtml(d) {
 }
 
 function panelHtml() {
-  let h = `<div class="view panel"><header><img class="brand-icon" src="brands/xdeck-app.png" alt=""><h1 class="brand-name">Xdeck</h1><button class="icon-btn" data-act="settings" data-nav="settings" title="Settings" aria-label="Settings">${I.gear}</button><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
+  let h = `<div class="view panel"><header><svg class="brand-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5.28" fill="#3cc6f2"/><g transform="translate(4.32 4.32) scale(.64)"><circle cx="12" cy="12.6" r="5.9" fill="#04070d"/><path d="M12.9 11.7l2.3-2.3" stroke="#3cc6f2" stroke-width="2" stroke-linecap="round"/><g fill="#04070d"><circle cx="5.71" cy="18.89" r="1.3"/><circle cx="3.1" cy="12.6" r="1.3"/><circle cx="5.71" cy="6.31" r="1.3"/><circle cx="12" cy="3.7" r="1.3"/><circle cx="18.29" cy="6.31" r="1.3"/></g><g fill="#04070d" opacity=".32"><circle cx="20.9" cy="12.6" r="1"/><circle cx="18.29" cy="18.89" r="1"/></g></g></svg><h1 class="brand-name">Xdeck</h1><button class="icon-btn" data-act="settings" data-nav="settings" title="Settings" aria-label="Settings">${I.gear}</button><button class="icon-btn close" data-act="close" data-nav="close" title="Close">${I.close}</button></header>`;
   h += sectionHtml(1, "Audio output", state.outs, state.defOut);
   h += sectionHtml(2, "Microphone", state.mics, state.defMic);
   h += brightHtml();
@@ -251,10 +251,13 @@ function panelHtml() {
 // Windows 11 hides new tray icons under ^ and ignores apps (and even its own Settings switch)
 // asking to show them; dragging the icon out is what works. The host checks the taskbar each time
 // the panel opens, so this goes away by itself once the icon is out.
+// The app mark as the tray draws it (src/Xdeck.cs, Knob()): disc, pointer cut out, five lit ticks.
+I.knob = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12.6" r="5.9" fill="currentColor"/><path d="M12.9 11.7l2.3-2.3" stroke="var(--bg)" stroke-width="2" stroke-linecap="round"/><g fill="currentColor"><circle cx="5.71" cy="18.89" r="1.3"/><circle cx="3.1" cy="12.6" r="1.3"/><circle cx="5.71" cy="6.31" r="1.3"/><circle cx="12" cy="3.7" r="1.3"/><circle cx="18.29" cy="6.31" r="1.3"/></g></svg>`;
+
 function trayHintHtml() {
   if (!trayHidden) return "";
   return `<div class="card tray-hint">
-      <span class="disc">${I.gear}</span>
+      <span class="disc">${I.knob}</span>
       <span class="who"><div class="nm">Keep Xdeck on the taskbar</div><div class="sub wrap">Windows hid the Xdeck icon under <b>^</b>. Drag it from there onto the taskbar.</div>
         <div class="tray-acts"><button class="upd-btn go" data-act="tray-open" data-nav="tray-open">Show me</button><button class="link-btn" data-act="tray-dismiss" data-nav="tray-dismiss">Don't show again</button></div></span>
     </div>`;
@@ -736,7 +739,6 @@ function updateG29(gp, pressed) {
 
 // ------------------------------------------------------------ render + events
 function render() {
-  document.documentElement.style.setProperty("--accent", state.accent || "#0078d4");
   if (view === "tester" && testing) {
     const p = state.pads.find((x) => x.key === testing.key);
     if (!p) { view = "panel"; testing = null; }
