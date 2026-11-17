@@ -433,7 +433,7 @@ class SetupForm : Form
         }
         done = true;
         status.ForeColor = Color.FromArgb(16, 124, 16);
-        status.Text = "Xdeck is installed. Find the gear in the tray, next to the clock.";
+        status.Text = "Xdeck is installed. Find the Xdeck knob in the tray, next to the clock.";
         install.Text = "Close";
         install.Enabled = true;
         cancel.Visible = false;

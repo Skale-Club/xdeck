@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#1f1f22">
+<meta name="theme-color" content="#070b14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Xdeck">
@@ -20,18 +20,22 @@
 <style>
   @font-face { font-family: "Xdeck Brand"; src: url('/fonts/xdeck-brand-bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
   :root {
-    --bg: #1f1f22; --card: #2c2c2f; --hot: #38383c; --off: #3a3a3e; --text: #f2f2f4; --dim: #a0a0a8;
-    --accent: #0a84ff; --green: #34c759; --red: #ff453a; --amber: #ffb340;
+    --bg: #070b14; --card: #0f1729; --hot: #17223b; --off: #1d2a48; --text: #eef2fb; --dim: #8b97b1;
+    --accent: #3cc6f2; --green: #3dd68c; --red: #ff5468; --amber: #f5c451;
+    --line: rgba(143,169,238,.12); --on-accent: #04070d; --faint: #5b6782;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --ring: color-mix(in srgb, var(--accent) 55%, transparent);
     --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+  html, body { margin: 0; height: 100%; background: radial-gradient(420px 300px at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 65%), var(--bg); color: var(--text); overflow: hidden;
     font: 15px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
   body { display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 10px; padding: calc(12px + var(--safe-t)) 16px 8px; }
-  .gear { width: 22px; height: 22px; border-radius: 6px; flex: none; }
-  .pcbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--text);
-    font: 650 17px -apple-system, "Segoe UI", sans-serif; padding: 0; text-align: left; }
+  .gear { width: 24px; height: 24px; flex: none; }
+  .pcbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: var(--card); color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--line); border-radius: 10px; height: 34px;
+    font: 650 17px -apple-system, "Segoe UI", sans-serif; padding: 0 12px; text-align: left; }
   .pcbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pcbtn svg { width: 14px; height: 14px; color: var(--dim); flex: none; }
   .status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); flex: none; }
@@ -43,47 +47,57 @@
   main { flex: 1; min-height: 0; position: relative; }
   section { position: absolute; inset: 0; display: none; flex-direction: column; gap: 12px; padding: 4px 16px 12px; overflow-y: auto; }
   section.on { display: flex; }
-  nav { display: flex; padding: 6px 8px calc(6px + var(--safe-b)); background: #18181a; border-top: 1px solid #2a2a2d; }
-  nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; border: 0; background: none;
-    color: var(--dim); font: 600 11px -apple-system, "Segoe UI", sans-serif; }
+  nav { display: flex; padding: 6px 8px calc(6px + var(--safe-b)); background: #04070d; box-shadow: inset 0 1px 0 #111a2e; }
+  nav button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; border: 0; background: none;
+    color: var(--faint); font: 600 11px -apple-system, "Segoe UI", sans-serif; position: relative; }
   nav button svg { width: 24px; height: 24px; }
-  nav button.on { color: var(--accent); }
-  .pad { flex: 1; min-height: 220px; border-radius: 16px; background: var(--card); position: relative; touch-action: none;
-    display: grid; place-items: center; color: #55555c; font-size: 13px; text-align: center; padding: 20px; }
+  nav button.on { color: var(--text); }
+  nav button.on svg { color: var(--accent); }
+  nav button.on::before { content: ""; position: absolute; top: 0; left: 50%; width: 18px; height: 2px; margin-left: -9px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .pad { flex: 1; min-height: 220px; border-radius: 16px; position: relative; touch-action: none; overflow: hidden;
+    background-color: var(--card); background-image: radial-gradient(circle, rgba(143,169,238,.16) 1px, transparent 1.4px); background-size: 16px 16px;
+    box-shadow: inset 0 0 0 1px var(--line); }
   .pad.drag { box-shadow: inset 0 0 0 2px var(--accent); }
+  .pad-hint { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; padding: 0 12px;
+    font: 700 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); pointer-events: none; }
+  .pad-hint b { color: var(--dim); font-weight: 700; }
   .row { display: flex; gap: 10px; }
   .btn { flex: 1; min-height: 52px; border: 0; border-radius: 12px; background: var(--card); color: var(--text);
-    font: 600 15px -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; touch-action: manipulation; }
+    font: 600 15px -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; touch-action: manipulation; box-shadow: inset 0 0 0 1px var(--line); }
   .btn:active, .btn.held { background: var(--hot); }
   .btn svg { width: 24px; height: 24px; }
   .btn.big { min-height: 72px; }
-  .btn.accent { background: var(--accent); color: #fff; }
+  .btn.accent { background: var(--accent); color: var(--on-accent); }
   .btn.small { min-height: 44px; font-size: 13px; }
+  /* physical key edge for the Keys tab and the mouse buttons */
+  #tab-keys .btn.small, .mbtns .btn:not(.cfg) { box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 -3px 0 #04070d, 0 0 0 1px var(--line);
+    font: 700 13px var(--mono); letter-spacing: .06em; }
+  #tab-keys .btn.small:active, .mbtns .btn:not(.cfg):active { box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 -1px 0 #04070d, 0 0 0 1px var(--line); }
   .btn:disabled { opacity: .5; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .lbl { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); margin: 6px 2px -4px; }
+  .lbl { font: 700 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 6px 2px -4px; }
   textarea { width: 100%; min-height: 96px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); padding: 12px;
-    font: 16px -apple-system, "Segoe UI", sans-serif; resize: none; outline: none; user-select: text; -webkit-user-select: text; }
-  textarea:focus { box-shadow: inset 0 0 0 2px var(--accent); }
-  .mods .btn.on { background: var(--accent); color: #fff; }
+    font: 16px -apple-system, "Segoe UI", sans-serif; resize: none; outline: none; user-select: text; -webkit-user-select: text; box-shadow: inset 0 0 0 1px var(--line); }
+  textarea:focus { box-shadow: inset 0 0 0 2px var(--ring); }
+  .mods .btn.on { background: var(--accent); color: var(--on-accent); }
   .outs { display: flex; flex-direction: column; gap: 8px; }
-  .out { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 14px; border-radius: 12px; background: var(--card); }
-  .out.on { box-shadow: inset 0 0 0 2px var(--accent); }
+  .out { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 14px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+  .out.on { box-shadow: inset 0 0 0 2px var(--ring); }
   .out .nm { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .out svg { width: 22px; height: 22px; flex: none; color: var(--dim); }
   .out.on svg { color: var(--text); }
   .wait { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: var(--card);
-    color: var(--dim); font-size: 13.5px; text-align: center; margin-top: 6px; }
+    color: var(--dim); font-size: 13.5px; text-align: center; margin-top: 6px; box-shadow: inset 0 0 0 1px var(--line); }
   .wait .btn { flex: none; width: 100%; background: var(--hot); }
   .out .ck { color: var(--accent); font-weight: 700; visibility: hidden; }
   .out.on .ck { visibility: visible; }
-  .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); }
+  .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
   /* Volume slider, Material 3 style (same as the PC panel): a thick rounded track, the filled part
      in the accent, a gap, a slim upright handle, a dot at the end. --p is set by device() below. */
   .vol input { --h: 16px; --knob: 40px; --gap: 6px; --on: var(--accent); --p: 0%;
     flex: 1; height: 44px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
-  .vol.muted input { --on: #5a5a60; }
+  .vol.muted input { --on: var(--faint); }
   .vol input:disabled { opacity: .4; }
   .vol input::-webkit-slider-runnable-track { height: var(--h); border-radius: calc(var(--h) / 2);
     background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2.5px, transparent 3px),
@@ -95,38 +109,39 @@
     margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 2px; background: var(--text); transition: width .12s; }
   .vol input::-moz-range-thumb { width: 4px; height: var(--knob); border: 0; border-radius: 2px; background: var(--text); }
   .vol input:active::-webkit-slider-thumb { width: 2px; }
-  .vol .pct { width: 52px; text-align: right; color: var(--dim); font-weight: 600; font-size: 13px; }
+  .vol .pct { width: 52px; text-align: right; color: var(--dim); font: 600 13px var(--mono); font-variant-numeric: tabular-nums; }
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
   .vol .sun { display: grid; place-items: center; padding: 4px; color: var(--text); }
   #brightBox { display: flex; flex-direction: column; gap: 12px; }
   #brightBox[hidden] { display: none; }
   .vol svg { width: 24px; height: 24px; }
   .note { color: var(--dim); font-size: 12.5px; text-align: center; padding: 4px 12px; margin: 0; }
-  .btn.danger { color: #ff8a80; }
+  .btn.danger { color: var(--red); }
 
   /* touchpad settings, mixer, controllers, toast */
   .btn.cfg { flex: none; width: 52px; }
   #padCfg { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 4; max-width: 460px; margin: 0 auto; max-height: 100%; overflow-y: auto;
-    background: #2a2a2d; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+    background: #111a2e; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.5), inset 0 0 0 1px var(--line); }
   #padCfg .cfgrow { display: flex; align-items: center; gap: 10px; }
   #padCfg .cfgl { width: 64px; flex: none; font-size: 13px; font-weight: 600; color: var(--dim); }
   #padCfg .vol { flex: 1; min-width: 0; padding: 0 10px; background: var(--hot); }
   #padCfg .vol .pct { width: 44px; }
+  #padSpeedPct { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .seg { display: flex; flex: 1; gap: 6px; }
   .seg .btn { min-height: 40px; font-size: 13px; background: var(--hot); }
-  .seg .btn.on, #padNatural.on { background: var(--accent); color: #fff; }
+  .seg .btn.on, #padNatural.on { background: var(--accent); color: var(--on-accent); }
   #mixBox, #padsBox { display: flex; flex-direction: column; gap: 8px; }
   #mixList { display: flex; flex-direction: column; gap: 8px; }
   .mixrow { padding: 6px 14px 6px 12px; }
   .mixmain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .mixmain .mixnm { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 4px; }
   .mixmain input { flex: none; width: 100%; }
-  .out.padrow .bt { color: var(--dim); font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .out.padrow .bt { color: var(--dim); font: 600 13px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .bat { display: inline-flex; gap: 3px; }
   .bat i { width: 7px; height: 16px; border-radius: 2px; background: var(--off); }
   .bat i.on { background: var(--c); }
   #toast { position: fixed; left: 16px; right: 16px; top: calc(12px + var(--safe-t)); z-index: 12; max-width: 420px; margin: 0 auto; padding: 12px 14px;
-    border-radius: 12px; background: #2a2a2d; border-left: 4px solid var(--amber); box-shadow: 0 6px 24px rgba(0,0,0,.5); font-weight: 600; font-size: 14px; }
+    border-radius: 12px; background: #111a2e; border-left: 4px solid var(--amber); box-shadow: 0 6px 24px rgba(0,0,0,.5); font-weight: 600; font-size: 14px; }
 
   /* landscape (a phone on its side): compact header and tab bar, the pad fills the height with the
      mouse buttons beside it. Portrait is untouched. */
@@ -146,10 +161,10 @@
 
   /* apps */
   .chips { display: flex; gap: 8px; margin-top: 6px; }
-  .chip { flex: 1; min-width: 0; min-height: 68px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); position: relative;
+  .chip { flex: 1; min-width: 0; min-height: 68px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); position: relative; box-shadow: inset 0 0 0 1px var(--line);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 600 12.5px -apple-system, "Segoe UI", sans-serif; }
   .chip svg { width: 28px; height: 28px; }
-  .chip.on { box-shadow: inset 0 0 0 2px var(--accent); }
+  .chip.on { box-shadow: inset 0 0 0 2px var(--ring); }
   .chip .run { position: absolute; top: 9px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
   #appBody { display: flex; flex-direction: column; gap: 12px; }
   #appBody .grid3 { gap: 12px; }
@@ -158,7 +173,7 @@
   .apphead svg { width: 22px; height: 22px; flex: none; }
   .apphead .nm { flex: 1; font-weight: 650; font-size: 17px; }
   .apphead .st { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); }
-  .apphead .st i { width: 8px; height: 8px; border-radius: 50%; background: #5a5a60; }
+  .apphead .st i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
   .apphead .st i.on { background: var(--green); }
 
   /* pairing */
@@ -169,7 +184,7 @@
   .pair-content { width: 100%; max-width: 360px; margin-block: auto; flex: none; display: flex; flex-direction: column; align-items: center; }
   .pair-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; font: 700 24px/1 "Xdeck Brand", -apple-system, "Segoe UI", sans-serif; }
   .pair-brand span { line-height: 1; }
-  #pair .logo { width: 44px; height: 44px; border-radius: 11px; }
+  #pair .logo { width: 44px; height: 44px; flex: none; }
   #pair h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -.02em; }
   #pair p { margin: 12px 0 0; color: var(--dim); max-width: 330px; font-size: 14px; line-height: 21px; }
   .pair-stage { width: 100%; display: flex; flex-direction: column; align-items: center; }
@@ -182,9 +197,9 @@
   #pairBack { position: absolute; top: calc(20px + var(--safe-t)); left: 24px; }
   #pairForm { width: 100%; max-width: 330px; display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
   .code { width: 100%; max-width: 330px; height: 64px; border: 0; border-radius: 12px; background: var(--card); color: var(--text); text-align: center;
-    font: 700 32px ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .18em; outline: none; user-select: text; -webkit-user-select: text; }
-  .code::placeholder { color: #4a4a50; }
-  .code:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+    font: 700 32px var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .18em; outline: none; user-select: text; -webkit-user-select: text; box-shadow: inset 0 0 0 1px var(--line); }
+  .code::placeholder { color: var(--faint); }
+  .code:focus { box-shadow: inset 0 0 0 2px var(--ring); }
   #pairErr { color: var(--red); font-size: 13.5px; line-height: 20px; margin-top: 16px; }
   #pairErr:empty { display: none; }
   #pair .btn { width: 100%; max-width: 330px; min-height: 54px; flex: none; }
@@ -197,18 +212,19 @@
   /* PC menu */
   #menu { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.45); display: none; }
   #menu.on { display: block; }
-  .sheet { position: absolute; left: 12px; right: 12px; top: calc(56px + var(--safe-t)); background: #2a2a2d; border-radius: 14px; padding: 6px; }
+  .sheet { position: absolute; left: 12px; right: 12px; top: calc(56px + var(--safe-t)); background: #111a2e; border-radius: 14px; padding: 6px; box-shadow: inset 0 0 0 1px var(--line); }
   .item { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; }
   .item:active { background: var(--hot); }
   .item .nm { flex: 1; font-weight: 600; }
   .item .ck { color: var(--accent); }
+  button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .item .rm { border: 0; background: none; color: var(--red); font-weight: 600; padding: 4px 6px; }
-  .sep { height: 1px; background: #3a3a3e; margin: 4px 8px; }
+  .sep { height: 1px; background: var(--line); margin: 4px 8px; }
 </style>
 </head>
 <body>
 <header>
-  <img class="gear" src="/icon-192.png" alt="Xdeck">
+  <svg class="gear" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.28" fill="#3cc6f2"/><g transform="translate(4.32 4.32) scale(.64)"><circle cx="12" cy="12.6" r="5.9" fill="#04070d"/><path d="M12.9 11.7l2.3-2.3" stroke="#3cc6f2" stroke-width="2" stroke-linecap="round"/><g fill="#04070d"><circle cx="5.71" cy="18.89" r="1.3"/><circle cx="3.1" cy="12.6" r="1.3"/><circle cx="5.71" cy="6.31" r="1.3"/><circle cx="12" cy="3.7" r="1.3"/><circle cx="18.29" cy="6.31" r="1.3"/></g><g fill="#04070d" opacity=".32"><circle cx="20.9" cy="12.6" r="1"/><circle cx="18.29" cy="18.89" r="1"/></g></g></svg>
   <button class="pcbtn" id="pcBtn"><span id="pcName">Xdeck</span><svg viewBox="0 0 12 12"><path d="M2 4.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <span class="status" id="status"><span class="dot"></span><span id="statusText">Connecting…</span></span>
 </header>
@@ -216,11 +232,11 @@
 
 <main>
   <section id="tab-mouse" class="on">
-    <div class="pad" id="pad">Touchpad<br>tap = click · two fingers = scroll<br>two-finger tap = right click · hold = drag</div>
+    <div class="pad" id="pad"><div class="pad-hint"><span><b>Tap</b> click</span><span><b>2 fingers</b> scroll</span><span><b>2-finger tap</b> right click</span><span><b>Hold</b> drag</span></div></div>
     <div class="row mbtns">
-      <button class="btn" id="lbtn">Left</button>
-      <button class="btn" id="mbtn" style="flex:.5">Middle</button>
-      <button class="btn" id="rbtn">Right</button>
+      <button class="btn" id="lbtn" aria-label="Left click">L</button>
+      <button class="btn" id="mbtn" style="flex:.5" aria-label="Middle click">M</button>
+      <button class="btn" id="rbtn" aria-label="Right click">R</button>
       <button class="btn cfg" id="padCfgBtn" aria-label="Touchpad settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
     </div>
   </section>
@@ -344,7 +360,7 @@
 <div id="pair">
   <button class="quiet" id="pairBack" hidden type="button">‹ Back</button>
   <div class="pair-content">
-    <div class="pair-brand"><img class="logo" src="/icon-192.png" alt=""><span>Xdeck</span></div>
+    <div class="pair-brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.28" fill="#3cc6f2"/><g transform="translate(4.32 4.32) scale(.64)"><circle cx="12" cy="12.6" r="5.9" fill="#04070d"/><path d="M12.9 11.7l2.3-2.3" stroke="#3cc6f2" stroke-width="2" stroke-linecap="round"/><g fill="#04070d"><circle cx="5.71" cy="18.89" r="1.3"/><circle cx="3.1" cy="12.6" r="1.3"/><circle cx="5.71" cy="6.31" r="1.3"/><circle cx="12" cy="3.7" r="1.3"/><circle cx="18.29" cy="6.31" r="1.3"/></g><g fill="#04070d" opacity=".32"><circle cx="20.9" cy="12.6" r="1"/><circle cx="18.29" cy="18.89" r="1"/></g></g></svg><span>Xdeck</span></div>
     <div class="pair-stage" id="choiceStep">
       <h1>Connect to your PC</h1>
       <p id="pairLead">Keep Xdeck running on your PC.<br>Connect both devices to the same Wi-Fi.</p>

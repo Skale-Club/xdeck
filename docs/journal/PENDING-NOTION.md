@@ -571,3 +571,21 @@ Target: Projects / Xdeck / Journal (destination still unresolved; sync when it e
 - Repo / Branch: Skale-Club/xdeck / main, dev
 - Pending (owner): run the signed release from the home PC; add the two Cloudflare secrets and the
   production environment, then re-run "Deploy phone remote" from the Actions tab.
+
+## 2026-11-17 — Move the panel and phone remote to the skale.css v2 family design
+
+Target: Projects / Xdeck / Journal (destination still unresolved; see above).
+
+- Date: 2026-11-17
+- Type: Feature
+- Area: UI
+- Status: Partial (branch feat/skale-css-v2-pilot, committed locally, not merged or pushed; not seen running)
+- Summary: Panel and phone remote on the family navy with Xdeck's fixed signal cyan #3cc6f2 (no more Windows registry accent), unified buttons, mono labels and readouts, visible focus, knob icon in tray, app icon and PWA icons.
+- Agent: Claude Code
+- Model: Claude Opus 5.5 orchestrating and reviewing; three Claude Sonnet subagents (panel, phone remote, icons)
+- Repo / Branch: xdeck / feat/skale-css-v2-pilot
+- Tests: node tests/panel.test.cjs 11/11, node tests/remote-pairing.test.cjs 27/27; csc type-check of src/Xdeck.cs and tools/MakeIcon.cs clean (one pre-existing CS0108 warning). No build, no app run, no browser (Surface in critical memory mode).
+- Context: owner-approved family design (skaleclub-apps design/skale-css, journal SKA-5).
+- What changed: ui/app.css tokens and components; ui/app.js no longer applies state.accent, header and tray hint use the knob mark; remote/public/index.html tokens, keycaps, pad legend, L/M/R, pill switcher, lit tab, sw.js v11; src/Xdeck.cs Ui colors (navy, fixed Accent, Good/Warn/Bad/Off), window border, tray Knob() replaces Gear(); tools/MakeIcon.cs draws the knob and gains --png <size> <out> [--bleed]; regenerated xdeck-app.png and the PWA icons; setup text and README mention the knob.
+- Not done / risks: never rendered; check the 16 px tray icon and the tester artwork colors on the desktop; Unbounded wordmark font not bundled; native banner layout unchanged apart from colors.
+- Next: build and run on the desktop, review visually, then merge into dev.

@@ -35,11 +35,11 @@ progress bar while it downloads) and **Restart to update**; otherwise the panel 
 version there. Tray menu › **Check for updates** checks right away.
 
 Uninstall from Settings › Apps (or `"Uninstall Xdeck.exe" /uninstall` in its folder). An installed
-Xdeck keeps each user's settings in `%LOCALAPPDATA%\Xdeck`, also after uninstalling. On first run the gear is pinned to the taskbar
+Xdeck keeps each user's settings in `%LOCALAPPDATA%\Xdeck`, also after uninstalling. On first run the knob is pinned to the taskbar
 instead of hiding under the ^ arrow. Opening Xdeck a second time does nothing; the first copy keeps
 running (one per signed-in user).
 
-Xdeck lives in the system tray as a gear:
+Xdeck lives in the system tray as a knob (its icon):
 
 - **Left click**: open or close the panel. A click anywhere outside it, ×, or Esc closes it too.
 - **Right click**: open the panel, next / previous audio output, **Start with Windows**,
@@ -185,7 +185,7 @@ The app makes the phone:
 
 | Tab | What it does |
 |---|---|
-| **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; Left / Middle / Right buttons. The gear beside them sets the pointer speed (0.5x to 2.5x), the scroll speed (slow, normal, fast) and reverse scrolling, saved on the phone. Works in landscape too, with the buttons beside the pad |
+| **Mouse** | Touchpad: move, tap = click, two fingers = scroll, two-finger tap = right click, hold = drag; L / M / R buttons (left, middle, right)s. The gear beside them sets the pointer speed (0.5x to 2.5x), the scroll speed (slow, normal, fast) and reverse scrolling, saved on the phone. Works in landscape too, with the buttons beside the pad |
 | **Keyboard** | What you type goes to the PC (any language, autocorrect too); Ctrl / Alt / Shift / Win, Esc, Tab, arrows, Alt+Tab, copy / paste |
 | **Media** | Play / pause, previous, next, volume, mute, fullscreen |
 | **Audio** | Like the panel: the outputs and the microphones, the default one checked; tap one to switch to it; volume and mute of each (the PC shows the same banner as the controller's audio shortcut); the screen brightness when the PC has a built-in display (none on a desktop); the **volume of each app** playing on the PC, with its own mute (Xdeck 0.7.9 or newer); and the **Controllers** block with each connected controller's battery, plus a short alert on the phone when one drops to 15% (0.7.9 or newer). If the PC does not answer, it says so |
@@ -292,7 +292,7 @@ pelo próprio controle.
   para remover).
 - **Mouse, teclado e outros aparelhos sem fio:** aparecem no painel como círculos embaixo dos
   controles: o ícone no meio e um anel em volta que enche com a bateria (vermelho quando está baixa).
-- **Painel:** clique esquerdo na engrenagem. Clicar fora dele, no × ou Esc fecha.
+- **Painel:** clique esquerdo no ícone do Xdeck (o botão de volume) na bandeja. Clicar fora dele, no × ou Esc fecha.
 - **Trocar a saída:** `Ctrl+Alt+F11` / `Ctrl+Alt+F10`, ou no controle segure **D-pad direita + L1**
   e empurre o **analógico direito** (direita = próxima, esquerda = anterior).
 - **Volume pelo controle:** mesmo atalho, **analógico direito para cima / para baixo** sobe / desce
