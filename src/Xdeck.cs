@@ -5787,9 +5787,10 @@ class XdeckApp : Form
     }
 
     // Tray glyph: the Xdeck volume knob (same geometry as the app mark, 24-unit grid, no tile): a white
-    // disc and five lit ticks, with the pointer cut across the disc in the accent. (ox, oy) is the grid
-    // origin in pixels, k the pixels per grid unit.
-    static void Knob(Graphics g, float ox, float oy, float k, Color c, Color pointer)
+    // disc and five lit ticks, all white, with the pointer cut out of the disc (transparent), so the tray
+    // icon is a single colour like the other tray icons. (ox, oy) is the grid origin in pixels, k the
+    // pixels per grid unit.
+    static void Knob(Graphics g, float ox, float oy, float k, Color c)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -5800,11 +5801,14 @@ class XdeckApp : Form
             for (int i = 0; i < 5; i++)
                 g.FillEllipse(b, ox + (ticks[i, 0] - 1.3f) * k, oy + (ticks[i, 1] - 1.3f) * k, 2.6f * k, 2.6f * k);
         }
-        using (Pen p = new Pen(pointer, 2f * k))
+        CompositingMode was = g.CompositingMode;
+        g.CompositingMode = CompositingMode.SourceCopy;   // the pointer erases the disc: a cut-out
+        using (Pen p = new Pen(Color.Transparent, 2f * k))
         {
             p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
             g.DrawLine(p, ox + 12.9f * k, oy + 11.7f * k, ox + 15.2f * k, oy + 9.4f * k);
         }
+        g.CompositingMode = was;
     }
 
     // updateDot: an update is ready to install, so the knob wears a dot in the accent colour
@@ -5815,7 +5819,7 @@ class XdeckApp : Form
         {
             using (Graphics g = Graphics.FromImage(bmp))
             {
-                Knob(g, 16 - 10.7f * 1.7f, 16 - 11.3f * 1.7f, 1.7f, Color.White, Ui.Accent);
+                Knob(g, 16 - 10.7f * 1.7f, 16 - 11.3f * 1.7f, 1.7f, Color.White);
                 if (updateDot)
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
