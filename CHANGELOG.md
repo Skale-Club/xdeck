@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 — 2026-11-17
+
+- **Logitech receiver devices keep their battery across restarts.** A K400 or another mouse or keyboard on a Unifying/Bolt receiver only reports its battery while it is awake, and Xdeck kept that reading in memory only. After a restart or an update, a sleeping keyboard showed its short receiver name ("K400 Plus") with no battery until a key was pressed. The last battery and full name are now saved in `logi.json` and shown at start (still dropped after 12 hours without a fresh reading).
+
 ## 0.8.0 — 2026-11-17
 
 - **Also brings everything from 0.7.9**, which was never published on its own (installed copies went from 0.7.8 straight to this one): phone touchpad settings, landscape, per-app volume and controller batteries; banner corner, size and quiet mode; banners at the right size on scaled screens; paired phones kept across restarts; "Connected" only when the PC really answers. Details under 0.7.9 below.

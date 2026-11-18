@@ -1857,7 +1857,8 @@ static class Pads
 // HID++ protocol, what is paired to it (register 0x2B5: kind and name, known even while the device
 // sleeps), and asks each device that is awake its name (feature 0x0005) and battery (0x1004 unified
 // battery, else 0x1000 battery status, else 0x1001 voltage). In the background, once a minute; a
-// sleeping device keeps the battery it last reported for half a day.
+// sleeping device keeps the battery it last reported for half a day. What the devices said is kept
+// in Data\logi.json, so a restart (an update) does not lose a sleeping keyboard's battery and name.
 static class LogiReceivers
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -1881,7 +1882,49 @@ static class LogiReceivers
 
     class Known { public int Battery = -1; public bool Charging; public string Name; public DateTime At; }
     static readonly Dictionary<string, Known> known = new Dictionary<string, Known>();
+    static bool loaded, dirty;
     public static volatile List<Device> Devices = new List<Device>();
+
+    static string KnownFile { get { return Path.Combine(AppPaths.Data, "logi.json"); } }
+
+    // Data\logi.json: { key: { battery, charging, name, at } }; call under lock (known)
+    static void Load()
+    {
+        if (loaded) return;
+        loaded = true;
+        try
+        {
+            if (!File.Exists(KnownFile)) return;
+            Dictionary<string, object> all = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(KnownFile));
+            foreach (KeyValuePair<string, object> e in all)
+            {
+                Dictionary<string, object> v = e.Value as Dictionary<string, object>;
+                if (v == null) continue;
+                Known k = new Known();
+                if (v.ContainsKey("battery")) k.Battery = Convert.ToInt32(v["battery"]);
+                if (v.ContainsKey("charging")) k.Charging = Convert.ToBoolean(v["charging"]);
+                if (v.ContainsKey("name")) k.Name = v["name"] as string;
+                DateTime at;
+                if (v.ContainsKey("at") && DateTime.TryParse(v["at"] as string, null, System.Globalization.DateTimeStyles.RoundtripKind, out at)) k.At = at;
+                known[e.Key] = k;
+            }
+        }
+        catch { }
+    }
+
+    static void Save()
+    {
+        Dictionary<string, object> all = new Dictionary<string, object>();
+        lock (known)
+        {
+            if (!dirty) return;
+            dirty = false;
+            foreach (KeyValuePair<string, Known> e in known)
+                all[e.Key] = new Dictionary<string, object> {
+                    { "battery", e.Value.Battery }, { "charging", e.Value.Charging }, { "name", e.Value.Name }, { "at", e.Value.At.ToString("o") } };
+        }
+        try { File.WriteAllText(KnownFile, new JavaScriptSerializer().Serialize(all)); } catch { }
+    }
     static int busy;
     static DateTime lastRun = DateTime.MinValue;
 
@@ -2007,6 +2050,7 @@ static class LogiReceivers
                 }
             }
             Devices = list;
+            Save();
         }
         finally
         {
@@ -2028,7 +2072,7 @@ static class LogiReceivers
         string glyph = kind == 1 || kind == 3 ? "keyboard" : kind == 2 || kind == 8 || kind == 9 ? "mouse" : "usb";
         string key = r.Key + "-" + idx;
         Known k;
-        lock (known) { if (!known.TryGetValue(key, out k)) known[key] = k = new Known(); }
+        lock (known) { Load(); if (!known.TryGetValue(key, out k)) known[key] = k = new Known(); }
 
         Live(r, idx, k);   // the device itself, if it is awake
         if (k.Name != null) name = k.Name;
@@ -2061,7 +2105,7 @@ static class LogiReceivers
                 for (int i = 4; i < 20 && sb.Length < len; i++) sb.Append((char)part[i]);
             }
             string nm = sb.ToString().Trim('\0', ' ');
-            if (nm.Length > 0) k.Name = nm;
+            if (nm.Length > 0 && nm != k.Name) { lock (known) { k.Name = nm; dirty = true; } }
         }
         int battery = -1;
         bool charging = false;
@@ -2089,7 +2133,7 @@ static class LogiReceivers
                 charging = (b[6] & 0x80) != 0;
             }
         }
-        if (battery >= 0) { k.Battery = battery; k.Charging = charging; k.At = DateTime.Now; }
+        if (battery >= 0) lock (known) { k.Battery = battery; k.Charging = charging; k.At = DateTime.Now; dirty = true; }
     }
 }
 
