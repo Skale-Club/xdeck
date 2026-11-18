@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-11-17
+
+- **Also brings everything from 0.7.9**, which was never published on its own (installed copies went from 0.7.8 straight to this one): phone touchpad settings, landscape, per-app volume and controller batteries; banner corner, size and quiet mode; banners at the right size on scaled screens; paired phones kept across restarts; "Connected" only when the PC really answers. Details under 0.7.9 below.
 
 - **New look: the Skale Club family design (skale.css v2).** The panel and the phone remote move to the family navy surfaces with Xdeck's own signal colour, cyan `#3cc6f2`, on every PC. The accent no longer follows the Windows accent colour. Section titles are mono labels, numbers (volume, battery, codes) are mono and stop jittering, buttons share one style (primary, secondary, ghost), and keyboard focus is visible.
 - **New icon: a volume knob** replaces the gear in the tray, the app icon, the installer and the phone icons (`tools/MakeIcon.cs` draws it; the mark lives in skaleclub-apps `design/skale-css/marks/xdeck.svg`).
