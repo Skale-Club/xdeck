@@ -589,3 +589,25 @@ Target: Projects / Xdeck / Journal (destination still unresolved; see above).
 - What changed: ui/app.css tokens and components; ui/app.js no longer applies state.accent, header and tray hint use the knob mark; remote/public/index.html tokens, keycaps, pad legend, L/M/R, pill switcher, lit tab, sw.js v11; src/Xdeck.cs Ui colors (navy, fixed Accent, Good/Warn/Bad/Off), window border, tray Knob() replaces Gear(); tools/MakeIcon.cs draws the knob and gains --png <size> <out> [--bleed]; regenerated xdeck-app.png and the PWA icons; setup text and README mention the knob.
 - Not done / risks: never rendered; check the 16 px tray icon and the tester artwork colors on the desktop; Unbounded wordmark font not bundled; native banner layout unchanged apart from colors.
 - Next: build and run on the desktop, review visually, then merge into dev.
+
+## 2026-11-18 — Xdeck 0.8.2 released: round knob on the volume and brightness sliders
+
+Target: Projects / Xdeck / Journal (destination still unresolved; sync when it exists).
+
+- Date: 2026-11-18
+- Type: Release
+- Area: Panel UI; phone remote PWA
+- Status: Done (signed release v0.8.2; phone app deployed)
+- Summary: The owner found the slim upright slider handle hard to grab, above all on the phone.
+  Replaced it with a round knob (white, accent ring, soft shadow; 22px panel, 34px phone) with a
+  hover halo and a slight grow while dragging; the fill runs straight to --p (the browser keeps the
+  knob inside the track, so the fill's end always lands under it), so the gap and end dot are gone.
+  sw.js CACHE v13. Commit 99cbf74 on dev, CI green, main fast-forwarded; build.ps1 -Release ran
+  outside the app context via WMI; deploy-remote.yml deployed the phone app.
+- Agent: Claude Code (Opus 5.5, no subagents)
+- Repo / Branch: Skale-Club/xdeck / main
+- Tests: 38 Node tests; node --check; sw.js bump check; self-test ALL PASS in the release build.
+  Sliders checked on a test page in the in-app browser (0/28/60/100%, muted, phone width). Release
+  assets XdeckSetup.exe, Xdeck-0.8.2.zip, latest.json present; the downloaded ZIP passed
+  Updater.Verify (a tampered copy failed). Live sw.js serves xdeck-remote-v13 with the new CSS.
+  Not tried in the installed panel or on a real phone yet.
