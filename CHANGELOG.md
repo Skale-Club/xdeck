@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2 — 2026-11-18
+
+- **Round knob on the volume and brightness sliders.** The thin upright handle was hard to grab, above all on the phone. The sliders in the panel and the phone remote now have a round knob (white, with an accent ring and a soft shadow; 22px on the panel, 34px on the phone) that lights a halo on hover and grows a little while dragging. The filled part runs straight to the knob, without the gap and the end dot. `sw.js` CACHE v13.
+
 ## 0.8.1 — 2026-11-17
 
 - **Logitech receiver devices keep their battery across restarts.** A K400 or another mouse or keyboard on a Unifying/Bolt receiver only reports its battery while it is awake, and Xdeck kept that reading in memory only. After a restart or an update, a sleeping keyboard showed its short receiver name ("K400 Plus") with no battery until a key was pressed. The last battery and full name are now saved in `logi.json` and shown at start (still dropped after 12 hours without a fresh reading).

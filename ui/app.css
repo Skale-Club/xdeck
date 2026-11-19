@@ -77,19 +77,25 @@ h2 { font: 700 10px/1 var(--mono); letter-spacing: .14em; text-transform: upperc
 .vol.bright .mute { display: grid; place-items: center; }
 .vol .pct { width: 44px; text-align: right; color: var(--dim); font: 700 12px var(--mono); font-variant-numeric: tabular-nums; flex: none; }
 .vol.muted .pct { color: var(--red); }
-/* Volume slider, Material 3 style: a thick rounded track, the filled part in the accent, a gap,
-   a slim upright handle, and a dot marking the end of the empty part. --p (0-100%) comes from
-   app.js. The handle's center is at most 2px off --p (half its width), well inside the gap. */
-.vol input[type=range] { --h: 12px; --knob: 24px; --gap: 5px; --on: var(--accent);
-  flex: 1; height: var(--knob); margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+/* Volume slider: a thick rounded track with the filled part in the accent, and a round knob
+   (white with an accent ring and a soft shadow) that is easy to grab. --p (0-100%) comes from
+   app.js. The fill just runs to --p: the browser keeps the knob inside the track, so the end of
+   the fill always lands under the knob. */
+.vol input[type=range] { --h: 10px; --knob: 22px; --on: var(--accent);
+  flex: 1; height: 30px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
 .vol.muted input[type=range] { --on: var(--faint); }
+.vol input[type=range]:focus-visible { outline: none; }
 .vol input[type=range]::-webkit-slider-runnable-track { height: var(--h); border-radius: calc(var(--h) / 2);
-  background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2px, transparent 2.5px),
-    linear-gradient(90deg, var(--on) 0 calc(var(--p) - var(--gap)), transparent 0 calc(var(--p) + var(--gap)), var(--off) 0); }
-.vol input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: var(--knob);
-  margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 2px; background: var(--text); transition: width .12s, height .12s, margin .12s; }
-.vol input[type=range]:hover::-webkit-slider-thumb { height: calc(var(--knob) + 2px); margin-top: calc((var(--h) - var(--knob) - 2px) / 2); }
-.vol input[type=range]:active::-webkit-slider-thumb { width: 2px; }
+  background: linear-gradient(90deg, var(--on) 0 var(--p), var(--off) 0); }
+.vol input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; box-sizing: border-box; width: var(--knob); height: var(--knob);
+  margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 50%; border: 3px solid var(--on);
+  background: radial-gradient(circle at 35% 30%, #fff, #d6dfec 80%);
+  box-shadow: 0 2px 6px rgba(0,0,0,.45), 0 0 0 0 color-mix(in srgb, var(--on) 25%, transparent);
+  transition: transform .12s, box-shadow .12s; }
+.vol input[type=range]:hover::-webkit-slider-thumb,
+.vol input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 2px 6px rgba(0,0,0,.45), 0 0 0 5px color-mix(in srgb, var(--on) 25%, transparent); }
+.vol input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12);
+  box-shadow: 0 2px 8px rgba(0,0,0,.5), 0 0 0 6px color-mix(in srgb, var(--on) 32%, transparent); }
 .row.item { height: 38px; margin: 6px 0 0 10px; padding: 0 14px 0 8px; background: var(--sub); }
 .row.item .ico { width: 40px; height: 17px; color: var(--dim); }
 .row.item .ico svg { width: 17px; height: 17px; }

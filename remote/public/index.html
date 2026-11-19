@@ -93,22 +93,29 @@
   .out .ck { color: var(--accent); font-weight: 700; visibility: hidden; }
   .out.on .ck { visibility: visible; }
   .vol { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
-  /* Volume slider, Material 3 style (same as the PC panel): a thick rounded track, the filled part
-     in the accent, a gap, a slim upright handle, a dot at the end. --p is set by device() below. */
-  .vol input { --h: 16px; --knob: 40px; --gap: 6px; --on: var(--accent); --p: 0%;
+  /* Volume slider (same as the PC panel): a thick rounded track with the filled part in the
+     accent, and a big round knob (white, accent ring, soft shadow) that is easy to hit with a thumb.
+     --p is set by device() below. The fill just runs to --p: the browser keeps the knob inside the
+     track, so the end of the fill always lands under the knob. */
+  .vol input { --h: 14px; --knob: 34px; --on: var(--accent); --p: 0%;
     flex: 1; height: 48px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
   .vol.muted input { --on: var(--faint); }
   .vol input:disabled { opacity: .4; }
+  .vol input:focus-visible { outline: none; }
   .vol input::-webkit-slider-runnable-track { height: var(--h); border-radius: calc(var(--h) / 2);
-    background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2.5px, transparent 3px),
-      linear-gradient(90deg, var(--on) 0 calc(var(--p) - var(--gap)), transparent 0 calc(var(--p) + var(--gap)), var(--off) 0); }
+    background: linear-gradient(90deg, var(--on) 0 var(--p), var(--off) 0); }
   .vol input::-moz-range-track { height: var(--h); border-radius: calc(var(--h) / 2);
-    background: radial-gradient(circle at calc(100% - var(--h) / 2) 50%, var(--on) 0 2.5px, transparent 3px),
-      linear-gradient(90deg, var(--on) 0 calc(var(--p) - var(--gap)), transparent 0 calc(var(--p) + var(--gap)), var(--off) 0); }
-  .vol input::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: var(--knob);
-    margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 2px; background: var(--text); transition: width .12s; }
-  .vol input::-moz-range-thumb { width: 4px; height: var(--knob); border: 0; border-radius: 2px; background: var(--text); }
-  .vol input:active::-webkit-slider-thumb { width: 2px; }
+    background: linear-gradient(90deg, var(--on) 0 var(--p), var(--off) 0); }
+  .vol input::-webkit-slider-thumb { -webkit-appearance: none; box-sizing: border-box; width: var(--knob); height: var(--knob);
+    margin-top: calc((var(--h) - var(--knob)) / 2); border-radius: 50%; border: 4px solid var(--on);
+    background: radial-gradient(circle at 35% 30%, #fff, #d6dfec 80%);
+    box-shadow: 0 3px 8px rgba(0,0,0,.45), 0 0 0 0 color-mix(in srgb, var(--on) 25%, transparent);
+    transition: transform .12s, box-shadow .12s; }
+  .vol input::-moz-range-thumb { box-sizing: border-box; width: var(--knob); height: var(--knob); border-radius: 50%; border: 4px solid var(--on);
+    background: radial-gradient(circle at 35% 30%, #fff, #d6dfec 80%); box-shadow: 0 3px 8px rgba(0,0,0,.45); }
+  .vol input:active::-webkit-slider-thumb { transform: scale(1.1);
+    box-shadow: 0 3px 10px rgba(0,0,0,.5), 0 0 0 8px color-mix(in srgb, var(--on) 30%, transparent); }
+  .vol input:active::-moz-range-thumb { box-shadow: 0 3px 10px rgba(0,0,0,.5), 0 0 0 8px color-mix(in srgb, var(--on) 30%, transparent); }
   .vol .pct { width: 58px; text-align: right; color: var(--dim); font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
   .vol button { border: 0; background: none; color: var(--text); padding: 4px; }
   .vol .sun { display: grid; place-items: center; padding: 4px; color: var(--text); }
